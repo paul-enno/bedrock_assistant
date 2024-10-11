@@ -4,12 +4,17 @@ import asyncio
 from datetime import timedelta
 import logging
 
-from aioautomower.exceptions import ApiException, HusqvarnaWSServerHandshakeError
+from aioautomower.exceptions import (
+    ApiException,
+    AuthException,
+    HusqvarnaWSServerHandshakeError,
+)
 from aioautomower.model import MowerAttributes
 from aioautomower.session import AutomowerSession
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN
@@ -21,6 +26,8 @@ SCAN_INTERVAL = timedelta(minutes=8)
 
 class AutomowerDataUpdateCoordinator(DataUpdateCoordinator[dict[str, MowerAttributes]]):
     """Class to manage fetching Husqvarna data."""
+
+    config_entry: ConfigEntry
 
     def __init__(
         self, hass: HomeAssistant, api: AutomowerSession, entry: ConfigEntry
@@ -46,6 +53,8 @@ class AutomowerDataUpdateCoordinator(DataUpdateCoordinator[dict[str, MowerAttrib
             return await self.api.get_status()
         except ApiException as err:
             raise UpdateFailed(err) from err
+        except AuthException as err:
+            raise ConfigEntryAuthFailed(err) from err
 
     @callback
     def callback(self, ws_data: dict[str, MowerAttributes]) -> None:

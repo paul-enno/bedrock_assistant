@@ -35,9 +35,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import device_registry as dr, issue_registry as ir
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from . import HoneywellData
 from .const import (
@@ -99,7 +100,7 @@ async def async_setup_entry(
     heat_away_temp = entry.options.get(CONF_HEAT_AWAY_TEMPERATURE)
 
     data: HoneywellData = hass.data[DOMAIN][entry.entry_id]
-
+    _async_migrate_unique_id(hass, data.devices)
     async_add_entities(
         [
             HoneywellUSThermostat(data, device, cool_away_temp, heat_away_temp)
@@ -107,6 +108,21 @@ async def async_setup_entry(
         ]
     )
     remove_stale_devices(hass, entry, data.devices)
+
+
+def _async_migrate_unique_id(
+    hass: HomeAssistant, devices: dict[str, SomeComfortDevice]
+) -> None:
+    """Migrate entities to string."""
+    entity_registry = er.async_get(hass)
+    for device in devices.values():
+        entity_id = entity_registry.async_get_entity_id(
+            "climate", DOMAIN, device.deviceid
+        )
+        if entity_id is not None:
+            entity_registry.async_update_entity(
+                entity_id, new_unique_id=str(device.deviceid)
+            )
 
 
 def remove_stale_devices(
@@ -161,7 +177,7 @@ class HoneywellUSThermostat(ClimateEntity):
         self._away = False
         self._retry = 0
 
-        self._attr_unique_id = device.deviceid
+        self._attr_unique_id = str(device.deviceid)
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device.deviceid)},
@@ -195,13 +211,10 @@ class HoneywellUSThermostat(ClimateEntity):
                 ClimateEntityFeature.TURN_OFF | ClimateEntityFeature.TURN_ON
             )
 
-        if device._data.get("canControlHumidification"):
+        if device._data.get("canControlHumidification"):  # noqa: SLF001
             self._attr_supported_features |= ClimateEntityFeature.TARGET_HUMIDITY
 
-        if device.raw_ui_data.get("SwitchEmergencyHeatAllowed"):
-            self._attr_supported_features |= ClimateEntityFeature.AUX_HEAT
-
-        if not device._data.get("hasFan"):
+        if not device._data.get("hasFan"):  # noqa: SLF001
             return
 
         # not all honeywell fans support all modes
@@ -240,7 +253,9 @@ class HoneywellUSThermostat(ClimateEntity):
                     self._device.raw_ui_data["HeatLowerSetptLimit"],
                 ]
             )
-        return DEFAULT_MIN_TEMP
+        return TemperatureConverter.convert(
+            DEFAULT_MIN_TEMP, UnitOfTemperature.CELSIUS, self.temperature_unit
+        )
 
     @property
     def max_temp(self) -> float:
@@ -256,7 +271,9 @@ class HoneywellUSThermostat(ClimateEntity):
                     self._device.raw_ui_data["HeatUpperSetptLimit"],
                 ]
             )
-        return DEFAULT_MAX_TEMP
+        return TemperatureConverter.convert(
+            DEFAULT_MAX_TEMP, UnitOfTemperature.CELSIUS, self.temperature_unit
+        )
 
     @property
     def current_humidity(self) -> int | None:
@@ -312,11 +329,6 @@ class HoneywellUSThermostat(ClimateEntity):
             return PRESET_HOLD
 
         return PRESET_NONE
-
-    @property
-    def is_aux_heat(self) -> bool | None:
-        """Return true if aux heater."""
-        return self._device.system_mode == "emheat"
 
     @property
     def fan_mode(self) -> str | None:
@@ -513,53 +525,6 @@ class HoneywellUSThermostat(ClimateEntity):
             await self._turn_hold_mode_on()
         else:
             await self._turn_away_mode_off()
-
-    async def async_turn_aux_heat_on(self) -> None:
-        """Turn auxiliary heater on."""
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            "service_deprecation",
-            breaks_in_ha_version="2024.10.0",
-            is_fixable=True,
-            is_persistent=True,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="service_deprecation",
-        )
-        try:
-            await self._device.set_system_mode("emheat")
-
-        except SomeComfortError as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="set_aux_failed",
-            ) from err
-
-    async def async_turn_aux_heat_off(self) -> None:
-        """Turn auxiliary heater off."""
-
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            "service_deprecation",
-            breaks_in_ha_version="2024.10.0",
-            is_fixable=True,
-            is_persistent=True,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key="service_deprecation",
-        )
-
-        try:
-            if HVACMode.HEAT in self.hvac_modes:
-                await self.async_set_hvac_mode(HVACMode.HEAT)
-            else:
-                await self.async_set_hvac_mode(HVACMode.OFF)
-
-        except HomeAssistantError as err:
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="disable_aux_failed",
-            ) from err
 
     async def async_update(self) -> None:
         """Get the latest state from the service."""
