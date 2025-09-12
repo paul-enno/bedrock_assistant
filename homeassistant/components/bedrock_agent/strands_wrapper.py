@@ -1,19 +1,15 @@
 """Wrapper for strands.Agent to make it easier to test and implement."""
 
-from functools import partial
 import logging
 import os
 from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
-from mcp.client.sse import sse_client
-from opensearchpy import RequestsHttpConnection
 from strands import Agent
 from strands.models import BedrockModel
 from strands.session.file_session_manager import FileSessionManager
-from strands.tools.mcp import MCPClient
-from strands_tools import mem0_memory, retrieve
+from strands_tools import mem0_memory
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -114,42 +110,42 @@ class StrandsAgentWrapper:
         os.environ["AWS_ACCESS_KEY_ID"] = self.aws_access_key_id
         os.environ["AWS_SECRET_ACCESS_KEY"] = self.aws_secret_access_key
 
-        memory_config = {
-            "embedder": {"provider": "aws_bedrock", "config": {"model": "amazon.titan-embed-text-v2:0"}},
-            "llm": {
-                "provider": "aws_bedrock",
-                "config": {
-                    "model": "anthropic.claude-3-5-haiku-20241022-v1:0",
-                    "temperature": 0.1,
-                    "max_tokens": 2000,
-                },
-            },
-            "graph_store": {
-                "provider": "neo4j",
-                "config": {
-                    "url": "neo4j://localhost:7687",
-                    "username": "neo4j",
-                    "password": "enno1234"
-                }
-            },
-            # "vector_store": {}
-            # "vector_store": {
-            #     "provider": "opensearch",
-            #     "config": {
-            #         "port": 9200,
-            #         "collection_name": "mem0_memories",
-            #         "host": os.environ.get("OPENSEARCH_HOST"),
-            #         "embedding_model_dims": 1024,
-            #         "connection_class": RequestsHttpConnection,
-            #         "pool_maxsize": 20,
-            #         "use_ssl": False,
-            #         "verify_certs": False,
-            #         "http_auth": ("admin", "atBiqA7y@dkz")
-            #     },
-            # },
-        }
+        # memory_config = {
+        #     "embedder": {"provider": "aws_bedrock", "config": {"model": "amazon.titan-embed-text-v2:0"}},
+        #     "llm": {
+        #         "provider": "aws_bedrock",
+        #         "config": {
+        #             "model": "anthropic.claude-3-5-haiku-20241022-v1:0",
+        #             "temperature": 0.1,
+        #             "max_tokens": 2000,
+        #         },
+        #     },
+        #     "graph_store": {
+        #         "provider": "neo4j",
+        #         "config": {
+        #             "url": "neo4j://localhost:7687",
+        #             "username": "neo4j",
+        #             "password": "enno1234"
+        #         }
+        #     },
+        #     # "vector_store": {}
+        #     # "vector_store": {
+        #     #     "provider": "opensearch",
+        #     #     "config": {
+        #     #         "port": 9200,
+        #     #         "collection_name": "mem0_memories",
+        #     #         "host": os.environ.get("OPENSEARCH_HOST"),
+        #     #         "embedding_model_dims": 1024,
+        #     #         "connection_class": RequestsHttpConnection,
+        #     #         "pool_maxsize": 20,
+        #     #         "use_ssl": False,
+        #     #         "verify_certs": False,
+        #     #         "http_auth": ("admin", "atBiqA7y@dkz")
+        #     #     },
+        #     # },
+        # }
 
-        memory = await self.hass.async_add_executor_job(partial(mem0_memory.Mem0ServiceClient, memory_config))
+        # memory = await self.hass.async_add_executor_job(partial(mem0_memory.Mem0ServiceClient, memory_config))
         # tools = [memory]
         tools = [mem0_memory]
 
