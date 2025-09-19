@@ -11,12 +11,13 @@ from strands.models import BedrockModel
 from strands.session.file_session_manager import FileSessionManager
 from strands_tools import mem0_memory
 
+import custom_tool
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.llm import API, LLMContext
 
 # Configure the root strands logger
-logging.getLogger("strands").setLevel(logging.ERROR)
+logging.getLogger("strands").setLevel(logging.DEBUG)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,9 +148,9 @@ class StrandsAgentWrapper:
 
         # memory = await self.hass.async_add_executor_job(partial(mem0_memory.Mem0ServiceClient, memory_config))
         # tools = [memory]
-        tools = [mem0_memory]
 
-
+        # tools = [mem0_memory, custom_tool]
+        tools = [custom_tool]
 
         session_manager = FileSessionManager(session_id="enno-123", storage_dir="/tmp/strands")  # noqa: S108
         if(withSession and withSystemPrompt):
