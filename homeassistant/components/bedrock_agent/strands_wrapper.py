@@ -11,12 +11,16 @@ from strands.models import BedrockModel
 from strands.session.file_session_manager import FileSessionManager
 from strands_tools import mem0_memory
 
+<<<<<<< HEAD
 import custom_tool
+=======
+>>>>>>> e326648a17b (catching up with reality)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.llm import API, LLMContext
 
 # Configure the root strands logger
+<<<<<<< HEAD
 logging.getLogger("strands").setLevel(logging.DEBUG)
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,6 +48,17 @@ class StrandsAgentWrapper:
         return instance
 
     async def _async_init(
+=======
+logging.getLogger("strands").setLevel(logging.ERROR)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class StrandsAgentWrapper:
+    """Wrapper for strands.Agent to make it easier to test and implement."""
+
+    def __init__(
+>>>>>>> e326648a17b (catching up with reality)
         self,
         hass: HomeAssistant,
         aws_access_key_id: str,
@@ -51,7 +66,11 @@ class StrandsAgentWrapper:
         region_name: str,
         model_id: str,
         apis: list[API],
+<<<<<<< HEAD
         system_prompt: str | None = ""
+=======
+        system_prompt: str | None = "",
+>>>>>>> e326648a17b (catching up with reality)
     ) -> None:
         """Initialize the wrapper."""
         self.hass = hass
@@ -65,6 +84,7 @@ class StrandsAgentWrapper:
         self.api_instances = {}
         self.llm_context = None
         self.modules = {}
+<<<<<<< HEAD
 
         self.agent = await self.get_agent(model_id, True, True)
 
@@ -74,12 +94,29 @@ class StrandsAgentWrapper:
         withSession: bool,
         withSystemPrompt: bool) -> Agent:
         """Initalize Agent."""
+=======
+        self.agent = self.get_agent(model_id, True, True)
+
+    def get_agent(
+        self, model_id: str, withSession: bool, withSystemPrompt: bool
+    ) -> Agent:
+        """Do initalize Agent."""
+
+        # Store creds in ENV for Mem0
+        os.environ["AWS_REGION"] = self.region_name
+        os.environ["AWS_ACCESS_KEY_ID"] = self.aws_access_key_id
+        os.environ["AWS_SECRET_ACCESS_KEY"] = self.aws_secret_access_key
+>>>>>>> e326648a17b (catching up with reality)
 
         # Create a boto3 session
         session = boto3.Session(
             aws_access_key_id=self.aws_access_key_id,
             aws_secret_access_key=self.aws_secret_access_key,
+<<<<<<< HEAD
             region_name=self.region_name
+=======
+            region_name=self.region_name,
+>>>>>>> e326648a17b (catching up with reality)
         )
 
         # Create a Bedrock model with the custom session
@@ -89,6 +126,7 @@ class StrandsAgentWrapper:
             streaming=False,
         )
 
+<<<<<<< HEAD
         # SSE_URL = "http://localhost/mcp_server/sse"
         # SSE_HEADERS =  {
         #     "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI0N2EwZTZhNGVmMTM0OGU2YWJjMGU5MDI0NTA4ZTJkNSIsImlhdCI6MTc1NDMxOTYxMSwiZXhwIjoyMDY5Njc5NjExfQ.oZFvtcPgI1o7O36i9T451XwXQ4yPIAhYc8AlHnPPpzw"
@@ -167,6 +205,45 @@ class StrandsAgentWrapper:
         try:
             response = await self.hass.async_add_executor_job(self.agent, prompt)
             # return response.__str__()
+=======
+        tools = [mem0_memory]
+
+        session_manager = FileSessionManager(
+            session_id="enno-123", storage_dir="/tmp/strands"
+        )
+
+        if withSession and withSystemPrompt:
+            return Agent(
+                model=bedrock_model,
+                tools=tools,
+                session_manager=session_manager,
+                system_prompt=self.system_prompt,
+                callback_handler=None,
+            )
+        if withSession:
+            return Agent(
+                model=bedrock_model,
+                tools=tools,
+                session_manager=session_manager,
+                callback_handler=None,
+            )
+        if withSystemPrompt:
+            return Agent(
+                model=bedrock_model,
+                tools=tools,
+                system_prompt=self.system_prompt,
+                callback_handler=None,
+            )
+
+        return Agent(model=bedrock_model, callback_handler=None)
+
+    async def generate_response(
+        self, prompt: Any, llm_context: LLMContext | None = None
+    ) -> str:
+        """Generate a response from the agent."""
+        try:
+            response = await self.hass.async_add_executor_job(self.agent, prompt)
+>>>>>>> e326648a17b (catching up with reality)
             return str(response)
         except ClientError as error:
             raise HomeAssistantError(
@@ -178,7 +255,10 @@ class StrandsAgentWrapper:
         _LOGGER.debug("Calling LLM with prompt: %s", prompt)
         try:
             response = await self.hass.async_add_executor_job(self.agent, prompt)
+<<<<<<< HEAD
             # return response.__str__()
+=======
+>>>>>>> e326648a17b (catching up with reality)
             return str(response)
         except ClientError as error:
             raise HomeAssistantError(
