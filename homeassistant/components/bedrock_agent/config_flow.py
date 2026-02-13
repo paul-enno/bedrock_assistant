@@ -129,8 +129,10 @@ async def get_inference_profiles_selectOptionDict(
         aws_secret_access_key=data.get(CONST_KEY_SECRET),
     )
 
-    response = await hass.async_add_executor_job(
-        partial(bedrock.list_inference_profiles)
+    response= await hass.async_add_executor_job(
+        partial(
+            bedrock.list_inference_profiles
+        )
     )
 
     models = response.get("inferenceProfileSummaries")
@@ -140,7 +142,9 @@ async def get_inference_profiles_selectOptionDict(
         selector.SelectOptionDict(
             {
                 "value": m.get("inferenceProfileId"),
-                "label": template.format(profileName=m.get("inferenceProfileName")),
+                "label": template.format(
+                    profileName=m.get("inferenceProfileName")
+                ),
             }
         )
         for m in models
@@ -167,12 +171,7 @@ async def get_foundation_models_selectOptionDict(
     )
 
     models = model_response.get("modelSummaries")
-    models.sort(
-        key=lambda m: (
-            m.get("providerName", "").lower(),
-            m.get("modelName", "").lower(),
-        )
-    )
+    models.sort(key=lambda m: (m.get("providerName", "").lower(), m.get("modelName", "").lower()))
     template = "{model_provider} - {model_name}"
 
     modelSelectOptis = [
@@ -188,16 +187,20 @@ async def get_foundation_models_selectOptionDict(
     ]
 
     profiles_response = await hass.async_add_executor_job(
-        partial(bedrock.list_inference_profiles)
+        partial(
+            bedrock.list_inference_profiles
+        )
     )
     profiles = profiles_response.get("inferenceProfileSummaries")
     profiles.sort(key=lambda p: (p.get("inferenceProfileName").lower()))
     template = "{profileName}"
-    profileSelectOptis = [
+    profileSelectOptis =[
         selector.SelectOptionDict(
             {
                 "value": p.get("inferenceProfileId"),
-                "label": template.format(profileName=p.get("inferenceProfileName")),
+                "label": template.format(
+                    profileName=p.get("inferenceProfileName")
+                ),
             }
         )
         for p in profiles
