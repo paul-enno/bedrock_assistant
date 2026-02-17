@@ -145,6 +145,8 @@ pytest_buckets.txt
 .serena/
 
 # Self defined
-homeassitant-docs
+dev-docs/
+
+
 
 
