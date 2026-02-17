@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
+
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 
 from .agent import BedrockAgent
 from .const import DOMAIN
@@ -53,6 +55,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "cognitive_task",
         service_handler.async_handle_cognitive_task,
         schema=COGNITIVE_TASK_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # Register memory management services
+    async def async_clear_conversation_cache(call: ServiceCall) -> None:
+        """Clear agent cache for a specific conversation."""
+        conversation_id = call.data.get("conversation_id")
+        bedrock_agent.strands_agent_wrapper.clear_conversation_cache(conversation_id)
+
+    async def async_clear_all_cache(call: ServiceCall) -> None:
+        """Clear all agent cache."""
+        bedrock_agent.strands_agent_wrapper.clear_all_cache()
+
+    async def async_get_memory_stats(call: ServiceCall) -> dict:
+        """Get memory statistics."""
+        return bedrock_agent.strands_agent_wrapper.get_memory_stats()
+
+    hass.services.async_register(
+        DOMAIN,
+        "clear_conversation_cache",
+        async_clear_conversation_cache,
+        schema=vol.Schema({vol.Required("conversation_id"): str}),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "clear_all_cache",
+        async_clear_all_cache,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_memory_stats",
+        async_get_memory_stats,
         supports_response=SupportsResponse.ONLY,
     )
 

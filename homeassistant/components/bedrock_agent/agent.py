@@ -61,6 +61,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             model_id=self.entry.options[CONST_MODEL_ID],
             apis=llm.async_get_apis(self.hass),
             system_prompt=self.entry.options[CONST_PROMPT_CONTEXT],
+            user_id=entry.entry_id,  # Use entry_id as user identifier
         )
 
     @property
@@ -118,7 +119,10 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             return await self.async_call_bedrock_agent(user_input, question)
 
         return await self.strands_agent_wrapper.generate_response(
-            initial_question, user_input.as_llm_context(self.entry.domain)
+            initial_question, 
+            user_input.as_llm_context(self.entry.domain), 
+            user_input.conversation_id,
+            user_input.context.user_id,
         )
 
     async def async_process(
