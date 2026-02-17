@@ -61,6 +61,7 @@ class StrandsAgentWrapper:
         session_id: str | None = None,
         storage_dir: str = "/tmp/strands",  # noqa: S108
         enable_memory: bool = True,
+        enable_ha_control: bool = True,
         user_id: str | None = None,
     ) -> None:
         """Initialize the wrapper.
@@ -74,6 +75,7 @@ class StrandsAgentWrapper:
             session_id: Session ID (deprecated, use conversation_id)
             storage_dir: Storage directory (deprecated with mem0)
             enable_memory: Enable long-term memory with mem0
+            enable_ha_control: Enable Home Assistant device control
             user_id: User ID for memory isolation
         """
         self.hass = hass
@@ -83,6 +85,7 @@ class StrandsAgentWrapper:
         self.storage_dir = storage_dir
         self.model_id = model_id
         self.enable_memory = enable_memory and MEM0_AVAILABLE
+        self.enable_ha_control = enable_ha_control
         self.user_id = user_id or "default_user"
 
         self.tools = []
@@ -100,11 +103,14 @@ class StrandsAgentWrapper:
             if not MEM0_AVAILABLE:
                 _LOGGER.warning("Memory disabled: mem0_memory tool not available")
 
-        # Add Home Assistant control tool if APIs are available
-        if self.apis:
-            _LOGGER.info("Home Assistant control enabled with %d APIs", len(self.apis))
+        # Log Home Assistant control status
+        if self.enable_ha_control:
+            if self.apis:
+                _LOGGER.info("Home Assistant control enabled with %d APIs", len(self.apis))
+            else:
+                _LOGGER.warning("Home Assistant control enabled but no APIs available")
         else:
-            _LOGGER.warning("No Home Assistant APIs available for device control")
+            _LOGGER.info("Home Assistant control disabled by configuration")
 
         # Cache of agents per conversation ID
         self._agent_cache: dict[str, Agent] = {}
@@ -275,14 +281,14 @@ If you get an error about "Failed to call turn_on", the device might not support
         # Build tools list
         agent_tools = list(self.tools)  # Start with mem0_memory if enabled
         
-        # Add Home Assistant control tool if APIs available and llm_context provided
-        if self.apis and llm_context:
+        # Add Home Assistant control tool if enabled, APIs available, and llm_context provided
+        if self.enable_ha_control and self.apis and llm_context:
             ha_tool = await create_ha_control_tool(self.hass, self.apis, llm_context)
             agent_tools.append(ha_tool)
             _LOGGER.debug("Added Home Assistant control tool to agent")
         
         # Create agent with enhanced system prompt that includes user_id context
-        system_prompt = self._get_enhanced_system_prompt(user_id, has_ha_control=bool(self.apis and llm_context))
+        system_prompt = self._get_enhanced_system_prompt(user_id, has_ha_control=bool(self.enable_ha_control and self.apis and llm_context))
         
         agent = Agent(
             model=bedrock_model,
@@ -358,14 +364,14 @@ If you get an error about "Failed to call turn_on", the device might not support
                     
                     # Build tools list for default agent
                     agent_tools = []
-                    if self.apis and llm_context:
+                    if self.enable_ha_control and self.apis and llm_context:
                         ha_tool = await create_ha_control_tool(self.hass, self.apis, llm_context)
                         agent_tools.append(ha_tool)
                     
                     self.agent = Agent(
                         model=bedrock_model,
                         tools=agent_tools,
-                        system_prompt=self._get_enhanced_system_prompt(has_ha_control=bool(self.apis and llm_context)),
+                        system_prompt=self._get_enhanced_system_prompt(has_ha_control=bool(self.enable_ha_control and self.apis and llm_context)),
                         callback_handler=None,
                     )
                 agent = self.agent

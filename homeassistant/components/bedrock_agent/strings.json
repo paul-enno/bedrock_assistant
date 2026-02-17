@@ -23,10 +23,12 @@
           "knowledgebase_id": "Knowledge Base",
           "agent_id": "Agent",
           "agent_alias_id": "AliasId",
-          "enable_memory": "Enable Long-term Memory"
+          "enable_memory": "Enable Long-term Memory",
+          "enable_ha_control": "Enable Home Assistant Control"
         },
         "data_description": {
-          "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions."
+          "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions.",
+          "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home."
         }
       }
     },
@@ -48,10 +50,12 @@
           "knowledgebase_id": "Knowledge Base",
           "agent_id": "Agent",
           "agent_alias_id": "AliasId",
-          "enable_memory": "Enable Long-term Memory"
+          "enable_memory": "Enable Long-term Memory",
+          "enable_ha_control": "Enable Home Assistant Control"
         },
         "data_description": {
-          "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions."
+          "enable_memory": "Enable semantic memory with Mem0 for personalized, context-aware conversations that persist across sessions.",
+          "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home."
         }
       }
     }

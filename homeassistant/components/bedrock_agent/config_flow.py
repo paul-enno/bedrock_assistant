@@ -24,6 +24,7 @@ from homeassistant.helpers import selector
 from .const import (
     CONST_AGENT_ALIAS_ID,
     CONST_AGENT_ID,
+    CONST_ENABLE_HA_CONTROL,
     CONST_ENABLE_MEMORY,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
@@ -306,6 +307,10 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONST_ENABLE_MEMORY,
                     default=True,
                 ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONST_ENABLE_HA_CONTROL,
+                    default=True,
+                ): selector.BooleanSelector(),
             }
         )
 
@@ -412,6 +417,10 @@ class OptionsFlowHandler(OptionsFlow):
                 vol.Optional(
                     CONST_ENABLE_MEMORY,
                     default=self.config_entry.options.get(CONST_ENABLE_MEMORY, True),
+                ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONST_ENABLE_HA_CONTROL,
+                    default=self.config_entry.options.get(CONST_ENABLE_HA_CONTROL, True),
                 ): selector.BooleanSelector(),
             }
         )
