@@ -18,6 +18,7 @@ from .aws_client import AWSClientFactory
 from .const import (
     CONST_AGENT_ALIAS_ID,
     CONST_AGENT_ID,
+    CONST_ENABLE_MEMORY,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
     CONST_MODEL_ID,
@@ -62,6 +63,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             apis=llm.async_get_apis(self.hass),
             system_prompt=self.entry.options[CONST_PROMPT_CONTEXT],
             user_id=entry.entry_id,  # Use entry_id as user identifier
+            enable_memory=self.entry.options.get(CONST_ENABLE_MEMORY, True),
         )
 
     @property

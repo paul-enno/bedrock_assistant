@@ -14,6 +14,7 @@ CONST_AGENT_ALIAS_ID: Final = "agent_alias_id"
 CONST_TITLE: Final = "title"
 
 CONST_PROMPT_CONTEXT: Final = "prompt_context"
+CONST_ENABLE_MEMORY: Final = "enable_memory"
 CONST_MODEL_LIST: Final = [
     "amazon.titan-text-express-v1",
     "amazon.titan-text-lite-v1",
