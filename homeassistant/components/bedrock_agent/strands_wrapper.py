@@ -12,6 +12,8 @@ from strands.models import BedrockModel
 
 from homeassistant.exceptions import HomeAssistantError
 
+from .ha_control_tool import create_ha_control_tool, TOOL_SPEC as HA_CONTROL_TOOL_SPEC
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.llm import API, LLMContext
@@ -98,6 +100,12 @@ class StrandsAgentWrapper:
             if not MEM0_AVAILABLE:
                 _LOGGER.warning("Memory disabled: mem0_memory tool not available")
 
+        # Add Home Assistant control tool if APIs are available
+        if self.apis:
+            _LOGGER.info("Home Assistant control enabled with %d APIs", len(self.apis))
+        else:
+            _LOGGER.warning("No Home Assistant APIs available for device control")
+
         # Cache of agents per conversation ID
         self._agent_cache: dict[str, Agent] = {}
 
@@ -154,24 +162,24 @@ class StrandsAgentWrapper:
             streaming=False,
         )
 
-    def _get_enhanced_system_prompt(self, user_id: str | None = None) -> str:
-        """Get system prompt enhanced with memory instructions.
+    def _get_enhanced_system_prompt(self, user_id: str | None = None, has_ha_control: bool = False) -> str:
+        """Get system prompt enhanced with memory and HA control instructions.
         
         Args:
             user_id: Optional user ID to include in memory instructions
+            has_ha_control: Whether Home Assistant control is available
             
         Returns:
-            Enhanced system prompt with memory instructions
+            Enhanced system prompt with memory and HA control instructions
         """
         base_prompt = self.system_prompt or ""
         
-        if not self.enable_memory:
-            return base_prompt
+        enhancements = []
         
-        # Use provided user_id or fall back to wrapper's user_id
-        effective_user_id = user_id or self.user_id
-        
-        memory_instructions = f"""
+        # Add memory instructions if enabled
+        if self.enable_memory:
+            effective_user_id = user_id or self.user_id
+            enhancements.append(f"""
 
 You have access to a long-term memory system that persists across conversations. Use the memory tool to:
 - Store important information about the user (preferences, facts, context)
@@ -180,11 +188,58 @@ You have access to a long-term memory system that persists across conversations.
 
 IMPORTANT: When using the memory tool, always use user_id="{effective_user_id}" to ensure memories are stored and retrieved for the correct user.
 
-When users share important information, proactively store it in memory. When answering questions, retrieve relevant memories to provide contextual, personalized responses."""
+When users share important information, proactively store it in memory. When answering questions, retrieve relevant memories to provide contextual, personalized responses.""")
         
-        return base_prompt + memory_instructions
+        # Add Home Assistant control instructions if available
+        if has_ha_control:
+            enhancements.append("""
 
-    def get_agent_with_memory(self, conversation_id: str, user_id: str) -> Agent:
+You have access to Home Assistant smart home control through the homeassistant_control tool.
+
+CRITICAL RULES FOR USING homeassistant_control:
+1. The tool requires TWO parameters for most operations:
+   - tool_name: The intent name (e.g., "HassTurnOn", "HassGetState")
+   - name: The device name (e.g., "kitchen light", "bedroom fan")
+
+2. ALWAYS provide the 'name' parameter when using these intents:
+   - HassTurnOn, HassTurnOff, HassToggle
+   - HassGetState
+   - HassLightSet
+   - HassSetPosition
+   - HassMediaUnpause, HassMediaPause, HassMediaNext, HassMediaPrevious
+   - HassSetVolume
+
+3. Only these intents work WITHOUT a 'name' parameter:
+   - GetLiveContext (shows all devices)
+   - GetDateTime (shows current time)
+
+4. Optional parameters:
+   - domain: Device type (e.g., "light", "switch", "fan") - helps identify the right device
+   - brightness: For lights, 0-100
+   - color: For lights, color name or value
+
+5. SPECIAL CASES:
+   - Scenes: Use the scene name directly as a tool if available, OR use HassTurnOn with the full entity_id (e.g., name="scene.ha_new")
+   - Scripts: Use the script name directly as a tool if available
+   - If a scene/script tool exists with the exact name, prefer using that tool directly
+
+CORRECT EXAMPLES:
+✓ homeassistant_control(tool_name="HassTurnOn", name="kitchen light", domain="light")
+✓ homeassistant_control(tool_name="HassGetState", name="living room temperature")
+✓ homeassistant_control(tool_name="GetLiveContext")
+✓ homeassistant_control(tool_name="ha_new") - if ha_new is a scene/script tool
+✓ homeassistant_control(tool_name="HassTurnOn", name="scene.ha_new") - activate scene by entity_id
+
+WRONG EXAMPLES:
+✗ homeassistant_control(tool_name="HassTurnOn") - Missing 'name' parameter!
+✗ homeassistant_control(tool_name="HassTurnOn", domain="light") - Still missing 'name'!
+
+If you get an error about "cannot target all devices", it means you forgot to provide the 'name' parameter.
+If you get an error about "Failed to call turn_on", the device might not support that action - try checking available tools with GetLiveContext.""")
+        
+        return base_prompt + "".join(enhancements)
+
+    async def get_agent_with_memory(self, conversation_id: str, user_id: str, llm_context: LLMContext | None = None) -> Agent:
         """Get or create an agent with mem0 memory for a specific conversation.
         
         With mem0, the agent has access to long-term semantic memory that:
@@ -195,9 +250,10 @@ When users share important information, proactively store it in memory. When ans
         Args:
             conversation_id: Unique identifier for the conversation (used for caching)
             user_id: Home Assistant user ID for memory isolation
+            llm_context: LLM context for Home Assistant control
             
         Returns:
-            Agent instance with mem0_memory tool configured for this user
+            Agent instance with mem0_memory tool and HA control configured for this user
         """
         # Create cache key combining conversation and user
         cache_key = f"{conversation_id}_{user_id}"
@@ -207,21 +263,30 @@ When users share important information, proactively store it in memory. When ans
             _LOGGER.debug("Using cached agent for conversation: %s, user: %s", conversation_id, user_id)
             return self._agent_cache[cache_key]
 
-        # Create new agent with mem0 memory tool
+        # Create new agent with mem0 memory tool and HA control
         _LOGGER.debug(
-            "Creating new agent with mem0 memory for user: %s, conversation: %s",
+            "Creating new agent with mem0 memory and HA control for user: %s, conversation: %s",
             user_id,
             conversation_id
         )
         
         bedrock_model = self._create_bedrock_model()
 
+        # Build tools list
+        agent_tools = list(self.tools)  # Start with mem0_memory if enabled
+        
+        # Add Home Assistant control tool if APIs available and llm_context provided
+        if self.apis and llm_context:
+            ha_tool = await create_ha_control_tool(self.hass, self.apis, llm_context)
+            agent_tools.append(ha_tool)
+            _LOGGER.debug("Added Home Assistant control tool to agent")
+        
         # Create agent with enhanced system prompt that includes user_id context
-        system_prompt = self._get_enhanced_system_prompt(user_id)
+        system_prompt = self._get_enhanced_system_prompt(user_id, has_ha_control=bool(self.apis and llm_context))
         
         agent = Agent(
             model=bedrock_model,
-            tools=self.tools,  # Includes mem0_memory if available
+            tools=agent_tools,
             system_prompt=system_prompt,
             callback_handler=None,
         )
@@ -280,7 +345,7 @@ When users share important information, proactively store it in memory. When ans
             if conversation_id and self.enable_memory:
                 # Use context user_id if available, otherwise fall back to wrapper user_id
                 effective_user_id = context_user_id or self.user_id
-                agent = self.get_agent_with_memory(conversation_id, effective_user_id)
+                agent = await self.get_agent_with_memory(conversation_id, effective_user_id, llm_context)
                 _LOGGER.debug(
                     "Using agent with mem0 memory for user: %s, conversation: %s",
                     effective_user_id,
@@ -290,15 +355,25 @@ When users share important information, proactively store it in memory. When ans
                 # Create default agent without memory if not cached
                 if self.agent is None:
                     bedrock_model = self._create_bedrock_model()
+                    
+                    # Build tools list for default agent
+                    agent_tools = []
+                    if self.apis and llm_context:
+                        ha_tool = await create_ha_control_tool(self.hass, self.apis, llm_context)
+                        agent_tools.append(ha_tool)
+                    
                     self.agent = Agent(
                         model=bedrock_model,
-                        system_prompt=self.system_prompt,
+                        tools=agent_tools,
+                        system_prompt=self._get_enhanced_system_prompt(has_ha_control=bool(self.apis and llm_context)),
                         callback_handler=None,
                     )
                 agent = self.agent
                 _LOGGER.debug("Using agent without memory")
             
-            response = await self.hass.async_add_executor_job(agent, prompt)
+            # Call the agent asynchronously using invoke_async
+            # This keeps us in the same event loop as Home Assistant
+            response = await agent.invoke_async(prompt)
             return str(response)
         except ClientError as error:
             raise HomeAssistantError(
