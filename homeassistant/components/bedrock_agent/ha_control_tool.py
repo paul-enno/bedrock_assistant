@@ -187,9 +187,9 @@ async def create_ha_control_tool(
         description=f"""Control Home Assistant devices and query their state.
 
 This tool dispatches to specific Home Assistant intents. You MUST provide:
-1. tool_name: The intent name (e.g., 'HassTurnOn', 'HassGetState')
-2. name: The device name (REQUIRED for most intents)
-3. domain: Optional device domain (e.g., 'light', 'switch')
+1. tool_name: The intent name (e.g., 'HassTurnOn', 'HassGetState', 'HassListAddItem')
+2. name: The device/list name (REQUIRED for most intents)
+3. Additional parameters based on the intent type
 
 Available tools:
 {available_tools}
@@ -197,6 +197,7 @@ Available tools:
 Examples:
 - Turn on: tool_name='HassTurnOn', name='kitchen light', domain='light'
 - Get state: tool_name='HassGetState', name='bedroom temperature'
+- Add to list: tool_name='HassListAddItem', name='Shopping List', item='milk'
 - List all: tool_name='GetLiveContext'"""
     )
     async def homeassistant_control(
@@ -205,16 +206,18 @@ Examples:
         domain: str = "",
         brightness: int | None = None,
         color: str = "",
+        item: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Execute a Home Assistant tool.
         
         Args:
-            tool_name: Name of the HA tool/intent (e.g., 'HassTurnOn', 'HassGetState')
-            name: Device name to control (REQUIRED for most intents)
+            tool_name: Name of the HA tool/intent (e.g., 'HassTurnOn', 'HassGetState', 'HassListAddItem')
+            name: Device/list name to control (REQUIRED for most intents)
             domain: Device domain (e.g., 'light', 'switch', 'fan')
             brightness: Light brightness 0-100 (for HassLightSet)
             color: Color name or value (for HassLightSet)
+            item: Item to add/remove (for HassListAddItem, HassListRemoveItem)
             **kwargs: Additional parameters for specific intents
         """
         _LOGGER.info(
@@ -229,16 +232,25 @@ Examples:
         
         # Validate that name is provided for intents that require it
         intents_requiring_name = {
+            # Device control intents
             "HassTurnOn", "HassTurnOff", "HassToggle", "HassGetState",
             "HassLightSet", "HassSetPosition", "HassMediaUnpause", "HassMediaPause",
-            "HassMediaNext", "HassMediaPrevious", "HassSetVolume"
+            "HassMediaNext", "HassMediaPrevious", "HassSetVolume",
+            # Shopping list / todo intents
+            "HassListAddItem", "HassListRemoveItem",
         }
         
         if tool_name in intents_requiring_name and not name:
             error_msg = (
-                f"Intent '{tool_name}' requires a 'name' parameter to specify which device to control. "
-                f"Please provide the device name (e.g., name='kitchen light')."
+                f"Intent '{tool_name}' requires a 'name' parameter. "
             )
+            
+            # Provide specific guidance based on intent type
+            if tool_name.startswith("HassList"):
+                error_msg += "For shopping list intents, provide the list name (e.g., name='Shopping List')."
+            else:
+                error_msg += "For device control, provide the device name (e.g., name='kitchen light')."
+            
             _LOGGER.error(error_msg)
             return {"error": error_msg}
         
@@ -252,6 +264,8 @@ Examples:
             tool_args["brightness"] = brightness
         if color:
             tool_args["color"] = color
+        if item:
+            tool_args["item"] = item
         
         _LOGGER.info("Calling HA tool %s with args: %s", tool_name, tool_args)
         

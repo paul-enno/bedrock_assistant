@@ -208,12 +208,9 @@ CRITICAL RULES FOR USING homeassistant_control:
    - name: The device name (e.g., "kitchen light", "bedroom fan")
 
 2. ALWAYS provide the 'name' parameter when using these intents:
-   - HassTurnOn, HassTurnOff, HassToggle
-   - HassGetState
-   - HassLightSet
-   - HassSetPosition
-   - HassMediaUnpause, HassMediaPause, HassMediaNext, HassMediaPrevious
-   - HassSetVolume
+   - Device control: HassTurnOn, HassTurnOff, HassToggle, HassGetState, HassLightSet, HassSetPosition
+   - Media control: HassMediaUnpause, HassMediaPause, HassMediaNext, HassMediaPrevious, HassSetVolume
+   - Shopping lists: HassListAddItem, HassListRemoveItem (name = list name, e.g., "Shopping List")
 
 3. Only these intents work WITHOUT a 'name' parameter:
    - GetLiveContext (shows all devices)
@@ -232,6 +229,7 @@ CRITICAL RULES FOR USING homeassistant_control:
 CORRECT EXAMPLES:
 ✓ homeassistant_control(tool_name="HassTurnOn", name="kitchen light", domain="light")
 ✓ homeassistant_control(tool_name="HassGetState", name="living room temperature")
+✓ homeassistant_control(tool_name="HassListAddItem", name="Shopping List", item="milk")
 ✓ homeassistant_control(tool_name="GetLiveContext")
 ✓ homeassistant_control(tool_name="ha_new") - if ha_new is a scene/script tool
 ✓ homeassistant_control(tool_name="HassTurnOn", name="scene.ha_new") - activate scene by entity_id
