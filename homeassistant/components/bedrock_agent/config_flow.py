@@ -29,6 +29,7 @@ from .const import (
     CONST_KEY_ID,
     CONST_KEY_SECRET,
     CONST_KNOWLEDGEBASE_ID,
+    CONST_MEMORY_STORAGE_PATH,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
@@ -131,22 +132,18 @@ async def get_inference_profiles_selectOptionDict(
         aws_secret_access_key=data.get(CONST_KEY_SECRET),
     )
 
-    response= await hass.async_add_executor_job(
-        partial(
-            bedrock.list_inference_profiles
-        )
+    response = await hass.async_add_executor_job(
+        partial(bedrock.list_inference_profiles)
     )
 
     models = response.get("inferenceProfileSummaries")
-    models.sort(key=lambda m: (m.get("inferenceProfileName").lower()))
+    models.sort(key=lambda m: m.get("inferenceProfileName").lower())
     template = "{profileName}"
     return [
         selector.SelectOptionDict(
             {
                 "value": m.get("inferenceProfileId"),
-                "label": template.format(
-                    profileName=m.get("inferenceProfileName")
-                ),
+                "label": template.format(profileName=m.get("inferenceProfileName")),
             }
         )
         for m in models
@@ -173,7 +170,12 @@ async def get_foundation_models_selectOptionDict(
     )
 
     models = model_response.get("modelSummaries")
-    models.sort(key=lambda m: (m.get("providerName", "").lower(), m.get("modelName", "").lower()))
+    models.sort(
+        key=lambda m: (
+            m.get("providerName", "").lower(),
+            m.get("modelName", "").lower(),
+        )
+    )
     template = "{model_provider} - {model_name}"
 
     modelSelectOptis = [
@@ -189,20 +191,16 @@ async def get_foundation_models_selectOptionDict(
     ]
 
     profiles_response = await hass.async_add_executor_job(
-        partial(
-            bedrock.list_inference_profiles
-        )
+        partial(bedrock.list_inference_profiles)
     )
     profiles = profiles_response.get("inferenceProfileSummaries")
-    profiles.sort(key=lambda p: (p.get("inferenceProfileName").lower()))
+    profiles.sort(key=lambda p: p.get("inferenceProfileName").lower())
     template = "{profileName}"
-    profileSelectOptis =[
+    profileSelectOptis = [
         selector.SelectOptionDict(
             {
                 "value": p.get("inferenceProfileId"),
-                "label": template.format(
-                    profileName=p.get("inferenceProfileName")
-                ),
+                "label": template.format(profileName=p.get("inferenceProfileName")),
             }
         )
         for p in profiles
@@ -307,6 +305,14 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONST_ENABLE_MEMORY,
                     default=True,
                 ): selector.BooleanSelector(),
+                vol.Optional(
+                    CONST_MEMORY_STORAGE_PATH,
+                    default="",
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.TEXT, multiline=False
+                    )
+                ),
                 vol.Optional(
                     CONST_ENABLE_HA_CONTROL,
                     default=True,
@@ -419,8 +425,20 @@ class OptionsFlowHandler(OptionsFlow):
                     default=self.config_entry.options.get(CONST_ENABLE_MEMORY, True),
                 ): selector.BooleanSelector(),
                 vol.Optional(
+                    CONST_MEMORY_STORAGE_PATH,
+                    default=self.config_entry.options.get(
+                        CONST_MEMORY_STORAGE_PATH, ""
+                    ),
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.TEXT, multiline=False
+                    )
+                ),
+                vol.Optional(
                     CONST_ENABLE_HA_CONTROL,
-                    default=self.config_entry.options.get(CONST_ENABLE_HA_CONTROL, True),
+                    default=self.config_entry.options.get(
+                        CONST_ENABLE_HA_CONTROL, True
+                    ),
                 ): selector.BooleanSelector(),
             }
         )

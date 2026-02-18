@@ -12,7 +12,7 @@ from strands.models import BedrockModel
 
 from homeassistant.exceptions import HomeAssistantError
 
-from .ha_control_tool import create_ha_control_tool, TOOL_SPEC as HA_CONTROL_TOOL_SPEC
+from .ha_control_tool import create_ha_control_tool
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -31,13 +31,16 @@ MEM0_ERROR_MESSAGE = None
 
 try:
     from strands_tools import mem0_memory
-    
+
     # Check if faiss is available (required by mem0)
     try:
         import faiss  # noqa: F401
+
         MEM0_AVAILABLE = True
     except ImportError:
-        MEM0_ERROR_MESSAGE = "faiss-cpu not available. Install with: pip install faiss-cpu"
+        MEM0_ERROR_MESSAGE = (
+            "faiss-cpu not available. Install with: pip install faiss-cpu"
+        )
         _LOGGER.warning(
             "mem0_memory tool requires faiss-cpu. Install with: pip install faiss-cpu"
         )
@@ -58,35 +61,40 @@ class StrandsAgentWrapper:
         model_id: str,
         apis: list[API],
         system_prompt: str | None = "",
-        session_id: str | None = None,
-        storage_dir: str = "/tmp/strands",  # noqa: S108
         enable_memory: bool = True,
         enable_ha_control: bool = True,
+        memory_storage_path: str = "",
         user_id: str | None = None,
     ) -> None:
         """Initialize the wrapper.
-        
+
         Args:
             hass: Home Assistant instance
             aws_factory: AWS client factory
             model_id: Bedrock model ID
             apis: List of Home Assistant APIs
             system_prompt: System prompt for the agent
-            session_id: Session ID (deprecated, use conversation_id)
-            storage_dir: Storage directory (deprecated with mem0)
             enable_memory: Enable long-term memory with mem0
             enable_ha_control: Enable Home Assistant device control
+            memory_storage_path: Custom path for memory storage (empty = use default)
             user_id: User ID for memory isolation
         """
         self.hass = hass
         self.aws_factory = aws_factory
         self.system_prompt = system_prompt
-        self.session_id = session_id
-        self.storage_dir = storage_dir
         self.model_id = model_id
         self.enable_memory = enable_memory and MEM0_AVAILABLE
         self.enable_ha_control = enable_ha_control
         self.user_id = user_id or "default_user"
+
+        # Set memory storage path - use default if not provided
+        if memory_storage_path:
+            self.memory_storage_path = memory_storage_path
+        else:
+            # Default to Home Assistant's storage directory
+            self.memory_storage_path = os.path.join(
+                hass.config.path(".storage"), "bedrock_agent_memory"
+            )
 
         self.tools = []
         self.apis = apis
@@ -99,14 +107,15 @@ class StrandsAgentWrapper:
             self._configure_mem0_credentials()
             self.tools.append(mem0_memory)
             _LOGGER.info("Mem0 memory enabled for long-term semantic memory")
-        else:
-            if not MEM0_AVAILABLE:
-                _LOGGER.warning("Memory disabled: mem0_memory tool not available")
+        elif not MEM0_AVAILABLE:
+            _LOGGER.warning("Memory disabled: mem0_memory tool not available")
 
         # Log Home Assistant control status
         if self.enable_ha_control:
             if self.apis:
-                _LOGGER.info("Home Assistant control enabled with %d APIs", len(self.apis))
+                _LOGGER.info(
+                    "Home Assistant control enabled with %d APIs", len(self.apis)
+                )
             else:
                 _LOGGER.warning("Home Assistant control enabled but no APIs available")
         else:
@@ -119,45 +128,62 @@ class StrandsAgentWrapper:
         self.agent = None
 
     def _configure_mem0_credentials(self) -> None:
-        """Configure AWS credentials for mem0 via environment variables.
-        
-        Mem0 uses environment variables for AWS credentials. We set them here
-        to ensure mem0 can access Bedrock for embeddings and LLM operations.
+        """Configure AWS credentials and storage for mem0 via environment variables.
+
+        Mem0 uses environment variables for AWS credentials and FAISS configuration.
+        We set them here to ensure mem0 can access Bedrock for embeddings and LLM operations,
+        and stores data in the configured location.
         """
         # Set AWS credentials if not already set
         if not os.environ.get("AWS_ACCESS_KEY_ID"):
             os.environ["AWS_ACCESS_KEY_ID"] = self.aws_factory.aws_access_key_id
             _LOGGER.debug("Set AWS_ACCESS_KEY_ID for mem0")
-        
+
         if not os.environ.get("AWS_SECRET_ACCESS_KEY"):
             os.environ["AWS_SECRET_ACCESS_KEY"] = self.aws_factory.aws_secret_access_key
             _LOGGER.debug("Set AWS_SECRET_ACCESS_KEY for mem0")
-        
+
         if not os.environ.get("AWS_REGION"):
             os.environ["AWS_REGION"] = self.aws_factory.region_name
             _LOGGER.debug("Set AWS_REGION for mem0: %s", self.aws_factory.region_name)
-        
+
         # Configure mem0 to use Bedrock for embeddings and LLM
         # These can be overridden by user if they set them explicitly
         if not os.environ.get("MEM0_EMBEDDER_PROVIDER"):
             os.environ["MEM0_EMBEDDER_PROVIDER"] = "aws_bedrock"
-        
+
         if not os.environ.get("MEM0_EMBEDDER_MODEL"):
             os.environ["MEM0_EMBEDDER_MODEL"] = "amazon.titan-embed-text-v2:0"
-        
+
         if not os.environ.get("MEM0_LLM_PROVIDER"):
             os.environ["MEM0_LLM_PROVIDER"] = "aws_bedrock"
-        
+
         if not os.environ.get("MEM0_LLM_MODEL"):
             os.environ["MEM0_LLM_MODEL"] = "anthropic.claude-3-5-haiku-20241022-v1:0"
-        
+
+        # Configure FAISS storage path
+        if not os.environ.get("MEM0_VECTOR_STORE_PATH"):
+            os.environ["MEM0_VECTOR_STORE_PATH"] = self.memory_storage_path
+            _LOGGER.debug("Set MEM0_VECTOR_STORE_PATH: %s", self.memory_storage_path)
+
+        # Ensure the storage directory exists
+        try:
+            os.makedirs(self.memory_storage_path, exist_ok=True)
+            _LOGGER.info("Memory storage directory: %s", self.memory_storage_path)
+        except OSError as err:
+            _LOGGER.error(
+                "Failed to create memory storage directory %s: %s",
+                self.memory_storage_path,
+                err,
+            )
+
         _LOGGER.info(
-            "Configured mem0 with AWS Bedrock: embedder=%s, llm=%s, region=%s",
+            "Configured mem0 with AWS Bedrock: embedder=%s, llm=%s, region=%s, storage=%s",
             os.environ.get("MEM0_EMBEDDER_MODEL"),
             os.environ.get("MEM0_LLM_MODEL"),
-            os.environ.get("AWS_REGION")
+            os.environ.get("AWS_REGION"),
+            self.memory_storage_path,
         )
-
 
     def _create_bedrock_model(self) -> BedrockModel:
         """Create a Bedrock model instance."""
@@ -168,20 +194,22 @@ class StrandsAgentWrapper:
             streaming=False,
         )
 
-    def _get_enhanced_system_prompt(self, user_id: str | None = None, has_ha_control: bool = False) -> str:
+    def _get_enhanced_system_prompt(
+        self, user_id: str | None = None, has_ha_control: bool = False
+    ) -> str:
         """Get system prompt enhanced with memory and HA control instructions.
-        
+
         Args:
             user_id: Optional user ID to include in memory instructions
             has_ha_control: Whether Home Assistant control is available
-            
+
         Returns:
             Enhanced system prompt with memory and HA control instructions
         """
         base_prompt = self.system_prompt or ""
-        
+
         enhancements = []
-        
+
         # Add memory instructions if enabled
         if self.enable_memory:
             effective_user_id = user_id or self.user_id
@@ -195,7 +223,7 @@ You have access to a long-term memory system that persists across conversations.
 IMPORTANT: When using the memory tool, always use user_id="{effective_user_id}" to ensure memories are stored and retrieved for the correct user.
 
 When users share important information, proactively store it in memory. When answering questions, retrieve relevant memories to provide contextual, personalized responses.""")
-        
+
         # Add Home Assistant control instructions if available
         if has_ha_control:
             enhancements.append("""
@@ -240,54 +268,63 @@ WRONG EXAMPLES:
 
 If you get an error about "cannot target all devices", it means you forgot to provide the 'name' parameter.
 If you get an error about "Failed to call turn_on", the device might not support that action - try checking available tools with GetLiveContext.""")
-        
+
         return base_prompt + "".join(enhancements)
 
-    async def get_agent_with_memory(self, conversation_id: str, user_id: str, llm_context: LLMContext | None = None) -> Agent:
+    async def get_agent_with_memory(
+        self, conversation_id: str, user_id: str, llm_context: LLMContext | None = None
+    ) -> Agent:
         """Get or create an agent with mem0 memory for a specific conversation.
-        
+
         With mem0, the agent has access to long-term semantic memory that:
         - Persists across all conversations for this user
         - Automatically stores and retrieves relevant information
         - Provides semantic search based on meaning, not just keywords
-        
+
         Args:
             conversation_id: Unique identifier for the conversation (used for caching)
             user_id: Home Assistant user ID for memory isolation
             llm_context: LLM context for Home Assistant control
-            
+
         Returns:
             Agent instance with mem0_memory tool and HA control configured for this user
         """
         # Create cache key combining conversation and user
         cache_key = f"{conversation_id}_{user_id}"
-        
+
         # Return cached agent if it exists
         if cache_key in self._agent_cache:
-            _LOGGER.debug("Using cached agent for conversation: %s, user: %s", conversation_id, user_id)
+            _LOGGER.debug(
+                "Using cached agent for conversation: %s, user: %s",
+                conversation_id,
+                user_id,
+            )
             return self._agent_cache[cache_key]
 
         # Create new agent with mem0 memory tool and HA control
         _LOGGER.debug(
             "Creating new agent with mem0 memory and HA control for user: %s, conversation: %s",
             user_id,
-            conversation_id
+            conversation_id,
         )
-        
+
         bedrock_model = self._create_bedrock_model()
 
         # Build tools list
         agent_tools = list(self.tools)  # Start with mem0_memory if enabled
-        
+
         # Add Home Assistant control tool if enabled, APIs available, and llm_context provided
         if self.enable_ha_control and self.apis and llm_context:
             ha_tool = await create_ha_control_tool(self.hass, self.apis, llm_context)
             agent_tools.append(ha_tool)
             _LOGGER.debug("Added Home Assistant control tool to agent")
-        
+
         # Create agent with enhanced system prompt that includes user_id context
-        system_prompt = self._get_enhanced_system_prompt(user_id, has_ha_control=bool(self.enable_ha_control and self.apis and llm_context))
-        
+        system_prompt = self._get_enhanced_system_prompt(
+            user_id,
+            has_ha_control=bool(self.enable_ha_control and self.apis and llm_context),
+        )
+
         agent = Agent(
             model=bedrock_model,
             tools=agent_tools,
@@ -301,11 +338,11 @@ If you get an error about "Failed to call turn_on", the device might not support
 
     def clear_conversation_cache(self, conversation_id: str) -> None:
         """Clear cached agent for a specific conversation.
-        
+
         Note: This only clears the agent cache, not the mem0 memories.
         Mem0 memories persist across conversations and must be cleared
         using the mem0 API directly if needed.
-        
+
         Args:
             conversation_id: Unique identifier for the conversation to clear
         """
@@ -315,32 +352,32 @@ If you get an error about "Failed to call turn_on", the device might not support
 
     def clear_all_cache(self) -> None:
         """Clear all cached agents.
-        
+
         Note: This only clears the agent cache, not the mem0 memories.
         """
         _LOGGER.debug("Clearing all agent cache")
         self._agent_cache.clear()
 
     async def generate_response(
-        self, 
-        prompt: Any, 
-        llm_context: LLMContext | None = None, 
+        self,
+        prompt: Any,
+        llm_context: LLMContext | None = None,
         conversation_id: str | None = None,
         context_user_id: str | None = None,
     ) -> str:
         """Generate a response from the agent.
-        
+
         When memory is enabled, the agent will automatically:
         - Store important information from the conversation
         - Retrieve relevant memories to provide context
         - Maintain long-term memory across all conversations
-        
+
         Args:
             prompt: The prompt to send to the agent
             llm_context: Optional LLM context
             conversation_id: Optional conversation ID for agent caching
             context_user_id: Optional user ID from Home Assistant context
-            
+
         Returns:
             The agent's response as a string
         """
@@ -349,32 +386,40 @@ If you get an error about "Failed to call turn_on", the device might not support
             if conversation_id and self.enable_memory:
                 # Use context user_id if available, otherwise fall back to wrapper user_id
                 effective_user_id = context_user_id or self.user_id
-                agent = await self.get_agent_with_memory(conversation_id, effective_user_id, llm_context)
+                agent = await self.get_agent_with_memory(
+                    conversation_id, effective_user_id, llm_context
+                )
                 _LOGGER.debug(
                     "Using agent with mem0 memory for user: %s, conversation: %s",
                     effective_user_id,
-                    conversation_id
+                    conversation_id,
                 )
             else:
                 # Create default agent without memory if not cached
                 if self.agent is None:
                     bedrock_model = self._create_bedrock_model()
-                    
+
                     # Build tools list for default agent
                     agent_tools = []
                     if self.enable_ha_control and self.apis and llm_context:
-                        ha_tool = await create_ha_control_tool(self.hass, self.apis, llm_context)
+                        ha_tool = await create_ha_control_tool(
+                            self.hass, self.apis, llm_context
+                        )
                         agent_tools.append(ha_tool)
-                    
+
                     self.agent = Agent(
                         model=bedrock_model,
                         tools=agent_tools,
-                        system_prompt=self._get_enhanced_system_prompt(has_ha_control=bool(self.enable_ha_control and self.apis and llm_context)),
+                        system_prompt=self._get_enhanced_system_prompt(
+                            has_ha_control=bool(
+                                self.enable_ha_control and self.apis and llm_context
+                            )
+                        ),
                         callback_handler=None,
                     )
                 agent = self.agent
                 _LOGGER.debug("Using agent without memory")
-            
+
             # Call the agent asynchronously using invoke_async
             # This keeps us in the same event loop as Home Assistant
             response = await agent.invoke_async(prompt)
@@ -385,29 +430,31 @@ If you get an error about "Failed to call turn_on", the device might not support
             ) from error
 
     async def async_call_llm(
-        self, 
-        prompt: str, 
-        llm_context: LLMContext, 
+        self,
+        prompt: str,
+        llm_context: LLMContext,
         conversation_id: str | None = None,
         context_user_id: str | None = None,
     ) -> str:
         """Call the agent with the given prompt.
-        
+
         Args:
             prompt: The prompt to send to the agent
             llm_context: LLM context
             conversation_id: Optional conversation ID for agent caching
             context_user_id: Optional user ID from Home Assistant context
-            
+
         Returns:
             The agent's response as a string
         """
         _LOGGER.debug("Calling LLM with prompt: %s", prompt)
-        return await self.generate_response(prompt, llm_context, conversation_id, context_user_id)
+        return await self.generate_response(
+            prompt, llm_context, conversation_id, context_user_id
+        )
 
     def get_memory_stats(self) -> dict[str, Any]:
         """Get memory statistics.
-        
+
         Returns:
             Dictionary with memory statistics
         """
@@ -418,9 +465,9 @@ If you get an error about "Failed to call turn_on", the device might not support
             "cached_conversations": len(self._agent_cache),
             "tools_count": len(self.tools),
         }
-        
+
         # Add error message if mem0 is not available
         if not MEM0_AVAILABLE and MEM0_ERROR_MESSAGE:
             stats["error"] = MEM0_ERROR_MESSAGE
-        
+
         return stats

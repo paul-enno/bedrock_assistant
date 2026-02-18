@@ -22,6 +22,7 @@ from .const import (
     CONST_ENABLE_MEMORY,
     CONST_KEY_ID,
     CONST_KEY_SECRET,
+    CONST_MEMORY_STORAGE_PATH,
     CONST_MODEL_ID,
     CONST_MODEL_LIST,
     CONST_PROMPT_CONTEXT,
@@ -66,6 +67,7 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             user_id=entry.entry_id,  # Use entry_id as user identifier
             enable_memory=self.entry.options.get(CONST_ENABLE_MEMORY, True),
             enable_ha_control=self.entry.options.get(CONST_ENABLE_HA_CONTROL, True),
+            memory_storage_path=self.entry.options.get(CONST_MEMORY_STORAGE_PATH, ""),
         )
 
     @property
@@ -89,8 +91,10 @@ class BedrockAgent(conversation.AbstractConversationAgent):
 
         # Lazy initialize the bedrock agent client
         if self._bedrock_agent_client is None:
-            self._bedrock_agent_client = await self.aws_factory.create_bedrock_agent_client()
-        
+            self._bedrock_agent_client = (
+                await self.aws_factory.create_bedrock_agent_client()
+            )
+
         bedrock_agent_client = self._bedrock_agent_client
 
         bedrock_agent_response = await self.hass.async_add_executor_job(
@@ -123,8 +127,8 @@ class BedrockAgent(conversation.AbstractConversationAgent):
             return await self.async_call_bedrock_agent(user_input, question)
 
         return await self.strands_agent_wrapper.generate_response(
-            initial_question, 
-            user_input.as_llm_context(self.entry.domain), 
+            initial_question,
+            user_input.as_llm_context(self.entry.domain),
             user_input.conversation_id,
             user_input.context.user_id,
         )
