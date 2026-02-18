@@ -26,8 +26,8 @@ logging.getLogger("strands").setLevel(logging.ERROR)
 _LOGGER = logging.getLogger(__name__)
 
 # Try to import mem0_memory tool and check dependencies
-MEM0_AVAILABLE = False
-MEM0_ERROR_MESSAGE = None
+_mem0_available = False
+_mem0_error_message = None
 
 try:
     from strands_tools import mem0_memory
@@ -36,16 +36,16 @@ try:
     try:
         import faiss  # noqa: F401
 
-        MEM0_AVAILABLE = True
+        _mem0_available = True
     except ImportError:
-        MEM0_ERROR_MESSAGE = (
+        _mem0_error_message = (
             "faiss-cpu not available. Install with: pip install faiss-cpu"
         )
         _LOGGER.warning(
             "mem0_memory tool requires faiss-cpu. Install with: pip install faiss-cpu"
         )
 except ImportError:
-    MEM0_ERROR_MESSAGE = "mem0_memory tool not available. Install with: pip install 'strands-agents-tools[mem0_memory]'"
+    _mem0_error_message = "mem0_memory tool not available. Install with: pip install 'strands-agents-tools[mem0_memory]'"
     _LOGGER.warning(
         "mem0_memory tool not available. Install with: pip install 'strands-agents-tools[mem0_memory]'"
     )
@@ -83,7 +83,7 @@ class StrandsAgentWrapper:
         self.aws_factory = aws_factory
         self.system_prompt = system_prompt
         self.model_id = model_id
-        self.enable_memory = enable_memory and MEM0_AVAILABLE
+        self.enable_memory = enable_memory and _mem0_available
         self.enable_ha_control = enable_ha_control
         self.user_id = user_id or "default_user"
 
@@ -107,7 +107,7 @@ class StrandsAgentWrapper:
             self._configure_mem0_credentials()
             self.tools.append(mem0_memory)
             _LOGGER.info("Mem0 memory enabled for long-term semantic memory")
-        elif not MEM0_AVAILABLE:
+        elif not _mem0_available:
             _LOGGER.warning("Memory disabled: mem0_memory tool not available")
 
         # Log Home Assistant control status
@@ -460,14 +460,14 @@ If you get an error about "Failed to call turn_on", the device might not support
         """
         stats = {
             "memory_enabled": self.enable_memory,
-            "mem0_available": MEM0_AVAILABLE,
+            "mem0_available": _mem0_available,
             "user_id": self.user_id,
             "cached_conversations": len(self._agent_cache),
             "tools_count": len(self.tools),
         }
 
         # Add error message if mem0 is not available
-        if not MEM0_AVAILABLE and MEM0_ERROR_MESSAGE:
-            stats["error"] = MEM0_ERROR_MESSAGE
+        if not _mem0_available and _mem0_error_message:
+            stats["error"] = _mem0_error_message
 
         return stats

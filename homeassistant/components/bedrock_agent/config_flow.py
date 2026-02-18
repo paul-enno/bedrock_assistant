@@ -89,10 +89,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     return {"title": "Bedrock"}
 
 
-async def get_foundation_models_selectOptionDict(
+async def get_foundation_models_select_option_dict(
     hass: HomeAssistant, data: dict[str, Any]
 ) -> Sequence[selector.SelectOptionDict]:
-    """Load vailable foundation models."""
+    """Load available foundation models."""
     bedrock = boto3.client(
         service_name="bedrock",
         region_name=data.get(CONST_REGION),
@@ -117,7 +117,7 @@ async def get_foundation_models_selectOptionDict(
     )
     template = "{model_provider} - {model_name}"
 
-    modelSelectOptis = [
+    model_select_options = [
         selector.SelectOptionDict(
             {
                 "value": m.get("modelId"),
@@ -135,7 +135,7 @@ async def get_foundation_models_selectOptionDict(
     profiles = profiles_response.get("inferenceProfileSummaries")
     profiles.sort(key=lambda p: p.get("inferenceProfileName").lower())
     template = "{profileName}"
-    profileSelectOptis = [
+    profile_select_options = [
         selector.SelectOptionDict(
             {
                 "value": p.get("inferenceProfileId"),
@@ -145,7 +145,7 @@ async def get_foundation_models_selectOptionDict(
         for p in profiles
     ]
 
-    return modelSelectOptis + profileSelectOptis
+    return model_select_options + profile_select_options
 
 
 class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -186,7 +186,7 @@ class BedrockAgentConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the initial step."""
 
-        foundation_models = await get_foundation_models_selectOptionDict(
+        foundation_models = await get_foundation_models_select_option_dict(
             self.hass, self.config_data
         )
 
@@ -264,7 +264,7 @@ class OptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Optionsflow to edit model configuration."""
-        foundation_models = await get_foundation_models_selectOptionDict(
+        foundation_models = await get_foundation_models_select_option_dict(
             self.hass, self.config_entry.data.copy()
         )
 
@@ -286,7 +286,9 @@ class OptionsFlowHandler(OptionsFlow):
                 ),
                 vol.Optional(
                     CONST_ENABLE_HA_CONTROL,
-                    default=self.config_entry.options.get(CONST_ENABLE_HA_CONTROL, True),
+                    default=self.config_entry.options.get(
+                        CONST_ENABLE_HA_CONTROL, True
+                    ),
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONST_ENABLE_MEMORY,
@@ -294,7 +296,9 @@ class OptionsFlowHandler(OptionsFlow):
                 ): selector.BooleanSelector(),
                 vol.Optional(
                     CONST_MEMORY_STORAGE_PATH,
-                    default=self.config_entry.options.get(CONST_MEMORY_STORAGE_PATH, ""),
+                    default=self.config_entry.options.get(
+                        CONST_MEMORY_STORAGE_PATH, ""
+                    ),
                 ): selector.TextSelector(
                     selector.TextSelectorConfig(
                         type=selector.TextSelectorType.TEXT, multiline=False

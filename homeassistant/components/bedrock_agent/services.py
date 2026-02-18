@@ -65,9 +65,7 @@ class CognitiveTaskService:
         # Process image files
         image_filenames = call.data.get(CONST_SERVICE_PARAM_FILENAMES)
         for image_filename in image_filenames or []:
-            file_image = await self.image_processor.load_image_from_file(
-                image_filename
-            )
+            file_image = await self.image_processor.load_image_from_file(image_filename)
             prompt_content.append(await build_converse_prompt_content(file_image))
 
         # Process image URLs

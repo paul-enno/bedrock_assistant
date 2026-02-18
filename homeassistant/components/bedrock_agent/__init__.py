@@ -16,11 +16,12 @@ from .services import COGNITIVE_TASK_SCHEMA, CognitiveTaskService
 
 _LOGGER = logging.getLogger(__name__)
 __all__ = [
+    "async_migrate_entry",
     "async_setup_entry",
     "async_unload_entry",
-    "async_migrate_entry",
     "options_update_listener",
 ]
+
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate old entry."""
@@ -105,4 +106,3 @@ async def options_update_listener(hass: HomeAssistant, config_entry: ConfigEntry
     """Handle options update."""
     # Reload could be implemented here if needed
     # await hass.config_entries.async_reload(config_entry.entry_id)
-
