@@ -62,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register memory management services
     async def async_clear_conversation_cache(call: ServiceCall) -> None:
         """Clear agent cache for a specific conversation."""
-        conversation_id = call.data.get("conversation_id")
+        conversation_id: str = call.data["conversation_id"]
         bedrock_agent.strands_agent_wrapper.clear_conversation_cache(conversation_id)
 
     async def async_clear_all_cache(call: ServiceCall) -> None:

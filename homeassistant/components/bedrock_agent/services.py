@@ -55,8 +55,8 @@ class CognitiveTaskService:
             CONST_SERVICE_PARAM_MODEL_ID, "us.anthropic.claude-sonnet-4-20250514-v1:0"
         )
 
-        agent = self.bedrock_agent.strands_agent_wrapper.get_agent(
-            param_model_id, False, False
+        agent = self.bedrock_agent.strands_agent_wrapper.get_simple_agent(
+            param_model_id
         )
 
         param_prompt = str(call.data.get(CONST_SERVICE_PARAM_PROMPT))
@@ -66,13 +66,15 @@ class CognitiveTaskService:
         image_filenames = call.data.get(CONST_SERVICE_PARAM_FILENAMES)
         for image_filename in image_filenames or []:
             file_image = await self.image_processor.load_image_from_file(image_filename)
-            prompt_content.append(await build_converse_prompt_content(file_image))
+            image_content = await build_converse_prompt_content(file_image)
+            prompt_content.append(image_content)  # type: ignore[arg-type]
 
         # Process image URLs
         param_image_urls = call.data.get(CONST_SERVICE_PARAM_IMAGE_URLS)
         for param_image_url in param_image_urls or []:
             url_image = await self.image_processor.load_image_from_url(param_image_url)
-            prompt_content.append(await build_converse_prompt_content(url_image))
+            url_content = await build_converse_prompt_content(url_image)
+            prompt_content.append(url_content)  # type: ignore[arg-type]
 
         try:
             result = agent(prompt_content)
