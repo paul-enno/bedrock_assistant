@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import boto3
 
@@ -26,18 +25,6 @@ class AWSClientFactory:
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
         self.region_name = region_name
-
-    async def create_bedrock_agent_client(self) -> Any:
-        """Create a Bedrock Agent Runtime client."""
-        return await self.hass.async_add_executor_job(
-            partial(
-                boto3.client,
-                service_name="bedrock-agent-runtime",
-                region_name=self.region_name,
-                aws_access_key_id=self.aws_access_key_id,
-                aws_secret_access_key=self.aws_secret_access_key,
-            )
-        )
 
     def create_boto3_session(self) -> boto3.Session:
         """Create a boto3 session (synchronous, for use in executor)."""

@@ -12,14 +12,11 @@
       "modelconfig": {
         "data": {
           "agent_alias_id": "AliasId",
-          "agent_id": "Agent",
           "enable_ha_control": "Enable Home Assistant Control",
           "enable_memory": "Enable Long-term Memory",
-          "knowledgebase_id": "Knowledge Base",
           "memory_storage_path": "Memory Storage Path",
           "model_id": "Model",
-          "prompt_context": "Prompt Context",
-          "use_knowledgebase": "Activate Knowledgebase"
+          "prompt_context": "Prompt Context"
         },
         "data_description": {
           "enable_ha_control": "Enable Home Assistant device control through the conversation agent. Allows the agent to turn devices on/off, query states, and control your smart home.",
@@ -47,11 +44,8 @@
     "step": {
       "init": {
         "data": {
-          "agent_alias_id": "AliasId",
-          "agent_id": "Agent",
           "enable_ha_control": "Enable Home Assistant Control",
           "enable_memory": "Enable Long-term Memory",
-          "knowledgebase_id": "Knowledge Base",
           "memory_storage_path": "Memory Storage Path",
           "model_id": "Model",
           "prompt_context": "Prompt Context"
