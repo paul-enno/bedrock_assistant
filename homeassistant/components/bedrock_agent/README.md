@@ -28,6 +28,8 @@ The Amazon Bedrock Agent integration brings powerful AI conversation capabilitie
    - Semantic search across all conversations
    - Personalized responses based on learned information
    - Powered by FAISS vector database
+   - **Configurable memory guidelines** to control what gets stored
+   - **Multi-language support** for memory instructions
 
 ### 🏠 Home Assistant Control
 - Turn devices on/off through natural language
@@ -88,6 +90,7 @@ The integration automatically installs:
    - **Enable Home Assistant Control**: Allow device control
    - **Enable Long-term Memory**: Enable Mem0 semantic memory
    - **Memory Storage Path**: Custom path for memory data (optional)
+   - **Memory Storage Guidelines**: Customize what information gets stored (optional, only shown when memory is enabled)
 
 ### Supported Models
 
@@ -109,6 +112,7 @@ After setup, you can modify settings through the integration's options:
 - Toggle Home Assistant control
 - Toggle long-term memory
 - Change memory storage path
+- **Customize memory storage guidelines** (supports any language)
 
 ## Usage
 
@@ -238,10 +242,27 @@ When Mem0 is enabled:
 - Check IAM permissions for Bedrock access
 - Ensure credentials haven't expired
 
+**"Conversation blocks and tool result blocks cannot be provided in the same turn"**
+- This indicates corrupted session history
+- The integration will automatically clear cache and retry
+- If it persists, manually clear session storage:
+  ```bash
+  rm -rf /config/.storage/bedrock_agent_sessions/*
+  ```
+- Then restart Home Assistant
+- This can happen after SDK updates or when restoring old sessions
+
+**Agent storing too much in memory (greetings, casual conversation)**
+- Edit the "Memory Storage Guidelines" in integration options
+- Customize what should and shouldn't be stored
+- Default guidelines prevent storing greetings and one-time requests
+- Guidelines can be written in any language
+
 **Memory not working**
 - Verify `faiss-cpu` is installed
 - Check memory storage path is writable
 - Review logs for memory-related errors
+- Ensure embedder model is available in your region
 
 **Home Assistant control not working**
 - Ensure "Enable Home Assistant Control" is checked
@@ -266,6 +287,8 @@ logger:
 2. **Memory**: Disable if not needed to reduce overhead
 3. **Context Window**: The 40-message sliding window balances context and performance
 4. **Storage**: Use SSD storage for better session/memory performance
+5. **Memory Guidelines**: Customize to store only important information, reducing memory overhead
+6. **Async Operations**: All blocking I/O runs in executor threads for optimal performance
 
 ## Security Considerations
 
