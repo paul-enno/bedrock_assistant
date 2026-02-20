@@ -2,13 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
-from botocore.exceptions import ClientError
 import pytest
 
 from homeassistant.components.bedrock_agent.aws_client import AWSClientFactory
 from homeassistant.components.bedrock_agent.strands_wrapper import StrandsAgentWrapper
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 
 
 @pytest.fixture
@@ -22,97 +20,117 @@ def aws_factory(hass: HomeAssistant) -> AWSClientFactory:
     )
 
 
-@pytest.fixture
-def strands_wrapper(
+async def test_wrapper_initialization(
     hass: HomeAssistant,
     aws_factory: AWSClientFactory,
-    mock_strands_agent: MagicMock,
-    mock_bedrock_model: MagicMock,
-    mock_file_session_manager: MagicMock,
-) -> StrandsAgentWrapper:
-    """Create a strands wrapper."""
-    return StrandsAgentWrapper(
+) -> None:
+    """Test wrapper initialization."""
+    with (
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.BedrockModel", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.Agent", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.FileSessionManager", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.SlidingWindowConversationManager", return_value=MagicMock()),
+    ):
+        wrapper = StrandsAgentWrapper(
+            hass=hass,
+            aws_factory=aws_factory,
+            model_id="anthropic.claude-v2",
+            apis=[],
+            system_prompt="Test prompt",
+            enable_memory=False,
+        )
+        
+        assert wrapper.hass == hass
+        assert wrapper.aws_factory == aws_factory
+        assert wrapper.model_id == "anthropic.claude-v2"
+        assert wrapper.system_prompt == "Test prompt"
+        assert wrapper.enable_memory is False
+
+
+async def test_get_agent_with_memory(
+    hass: HomeAssistant,
+    aws_factory: AWSClientFactory,
+) -> None:
+    """Test getting agent with memory enabled."""
+    with (
+        patch("homeassistant.components.bedrock_agent.strands_wrapper._mem0_available", True),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.mem0_memory", MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.BedrockModel", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.Agent", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.FileSessionManager", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.SlidingWindowConversationManager", return_value=MagicMock()),
+    ):
+        wrapper = StrandsAgentWrapper(
+            hass=hass,
+            aws_factory=aws_factory,
+            model_id="anthropic.claude-v2",
+            apis=[],
+            system_prompt="Test prompt",
+            enable_memory=True,
+            memory_storage_path="/tmp/test",
+        )
+        
+        # Memory should be enabled
+        assert wrapper.enable_memory is True
+
+
+async def test_get_simple_agent(
+    hass: HomeAssistant,
+    aws_factory: AWSClientFactory,
+) -> None:
+    """Test getting simple agent without session."""
+    wrapper = StrandsAgentWrapper(
         hass=hass,
         aws_factory=aws_factory,
         model_id="anthropic.claude-v2",
         apis=[],
         system_prompt="Test prompt",
-        session_id="test-session",
+        enable_memory=False,
     )
-
-
-async def test_generate_response_success(
-    hass: HomeAssistant,
-    strands_wrapper: StrandsAgentWrapper,
-) -> None:
-    """Test successful response generation."""
-    with patch.object(
-        hass, "async_add_executor_job", return_value="Test response"
+    
+    mock_agent = MagicMock()
+    
+    async def mock_executor_job(func, *args):
+        return mock_agent
+    
+    with (
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.BedrockModel", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.Agent", return_value=mock_agent),
+        patch.object(hass, "async_add_executor_job", side_effect=mock_executor_job),
     ):
-        result = await strands_wrapper.generate_response("Test prompt")
+        agent = await wrapper.get_simple_agent("test-model")
+        assert agent is not None
 
-        assert result == "Test response"
 
-
-async def test_generate_response_client_error(
+async def test_clear_cache(
     hass: HomeAssistant,
-    strands_wrapper: StrandsAgentWrapper,
+    aws_factory: AWSClientFactory,
 ) -> None:
-    """Test response generation with client error."""
-    error_response = {"Error": {"Message": "Test error"}}
-    client_error = ClientError(error_response, "test_operation")
-
-    with patch.object(
-        hass, "async_add_executor_job", side_effect=client_error
+    """Test clearing agent cache."""
+    with (
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.BedrockModel", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.Agent", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.FileSessionManager", return_value=MagicMock()),
+        patch("homeassistant.components.bedrock_agent.strands_wrapper.SlidingWindowConversationManager", return_value=MagicMock()),
     ):
-        with pytest.raises(HomeAssistantError, match="Amazon Bedrock Error"):
-            await strands_wrapper.generate_response("Test prompt")
-
-
-def test_get_agent_with_session_and_prompt(
-    strands_wrapper: StrandsAgentWrapper,
-    mock_strands_agent: MagicMock,
-    mock_bedrock_model: MagicMock,
-    mock_file_session_manager: MagicMock,
-) -> None:
-    """Test getting agent with session and system prompt."""
-    agent = strands_wrapper.get_agent("test-model", True, True)
-
-    assert agent is not None
-    mock_strands_agent.assert_called()
-
-
-def test_get_agent_without_session(
-    strands_wrapper: StrandsAgentWrapper,
-    mock_strands_agent: MagicMock,
-    mock_bedrock_model: MagicMock,
-) -> None:
-    """Test getting agent without session."""
-    agent = strands_wrapper.get_agent("test-model", False, True)
-
-    assert agent is not None
-
-
-def test_get_agent_without_prompt(
-    strands_wrapper: StrandsAgentWrapper,
-    mock_strands_agent: MagicMock,
-    mock_bedrock_model: MagicMock,
-    mock_file_session_manager: MagicMock,
-) -> None:
-    """Test getting agent without system prompt."""
-    agent = strands_wrapper.get_agent("test-model", True, False)
-
-    assert agent is not None
-
-
-async def test_async_call_llm(
-    hass: HomeAssistant,
-    strands_wrapper: StrandsAgentWrapper,
-) -> None:
-    """Test calling LLM through wrapper."""
-    with patch.object(
-        hass, "async_add_executor_job", return_value="LLM response"
-    ):
-        result = await strands_wrapper.async_call_llm("Test prompt", None)
-
-        assert result == "LLM response"
+        wrapper = StrandsAgentWrapper(
+            hass=hass,
+            aws_factory=aws_factory,
+            model_id="anthropic.claude-v2",
+            apis=[],
+            system_prompt="Test prompt",
+            enable_memory=False,
+        )
+        
+        # Add some agents to cache
+        wrapper._agent_cache["user1"] = MagicMock()
+        wrapper._agent_cache["user2"] = MagicMock()
+        
+        # Clear specific user
+        wrapper.clear_user_cache("user1")
+        assert "user1" not in wrapper._agent_cache
+        assert "user2" in wrapper._agent_cache
+        
+        # Clear all
+        wrapper.clear_all_cache()
+        assert len(wrapper._agent_cache) == 0

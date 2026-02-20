@@ -14,13 +14,19 @@ from homeassistant.helpers.intent import IntentResponseErrorCode
 
 
 @pytest.fixture
-def mock_conversation_input() -> agent_manager.ConversationInput:
+def mock_conversation_input(hass: HomeAssistant) -> agent_manager.ConversationInput:
     """Create a mock conversation input."""
+    context = MagicMock()
+    context.user_id = "test_user_id"
+    
     return agent_manager.ConversationInput(
         text="Test question",
+        context=context,
         language="en",
         conversation_id=uuid.uuid4().hex,
         device_id="test_device",
+        satellite_id=None,
+        agent_id=None,
     )
 
 
@@ -90,11 +96,17 @@ async def test_async_process_generates_conversation_id(
     """Test conversation ID generation when not provided."""
     agent_instance = hass.data["bedrock_agent"][init_integration.entry_id]["agent"]
 
+    context = MagicMock()
+    context.user_id = "test_user_id"
+    
     conversation_input = agent_manager.ConversationInput(
         text="Test question",
+        context=context,
         language="en",
         conversation_id=None,
         device_id="test_device",
+        satellite_id=None,
+        agent_id=None,
     )
 
     with patch.object(

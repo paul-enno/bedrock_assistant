@@ -12,9 +12,10 @@ from homeassistant.exceptions import HomeAssistantError
 
 
 @pytest.fixture
-def mock_service_call() -> ServiceCall:
+def mock_service_call(hass: HomeAssistant) -> ServiceCall:
     """Create a mock service call."""
     return ServiceCall(
+        hass=hass,
         domain="bedrock_agent",
         service="cognitive_task",
         data={
@@ -40,7 +41,7 @@ async def test_cognitive_task_text_only(
 
     with patch.object(
         agent_instance.strands_agent_wrapper,
-        "get_agent",
+        "get_simple_agent",
         return_value=mock_agent,
     ):
         result = await service.async_handle_cognitive_task(mock_service_call)
@@ -57,6 +58,7 @@ async def test_cognitive_task_with_image_file(
     service = CognitiveTaskService(hass, agent_instance)
 
     service_call = ServiceCall(
+        hass=hass,
         domain="bedrock_agent",
         service="cognitive_task",
         data={
@@ -65,15 +67,16 @@ async def test_cognitive_task_with_image_file(
         },
     )
 
-    mock_agent = MagicMock()
-    mock_agent.return_value = "Image with file"
     mock_image = MagicMock()
     mock_image.format = "jpeg"
+    
+    mock_agent = MagicMock()
+    mock_agent.return_value = "Image with file"
 
     with (
         patch.object(
             agent_instance.strands_agent_wrapper,
-            "get_agent",
+            "get_simple_agent",
             return_value=mock_agent,
         ),
         patch.object(
@@ -96,6 +99,7 @@ async def test_cognitive_task_with_image_url(
     service = CognitiveTaskService(hass, agent_instance)
 
     service_call = ServiceCall(
+        hass=hass,
         domain="bedrock_agent",
         service="cognitive_task",
         data={
@@ -104,15 +108,16 @@ async def test_cognitive_task_with_image_url(
         },
     )
 
-    mock_agent = MagicMock()
-    mock_agent.return_value = "Image from URL"
     mock_image = MagicMock()
     mock_image.format = "jpeg"
+    
+    mock_agent = MagicMock()
+    mock_agent.return_value = "Image from URL"
 
     with (
         patch.object(
             agent_instance.strands_agent_wrapper,
-            "get_agent",
+            "get_simple_agent",
             return_value=mock_agent,
         ),
         patch.object(
@@ -143,7 +148,7 @@ async def test_cognitive_task_client_error(
 
     with patch.object(
         agent_instance.strands_agent_wrapper,
-        "get_agent",
+        "get_simple_agent",
         return_value=mock_agent,
     ):
         with pytest.raises(HomeAssistantError, match="Bedrock Error"):

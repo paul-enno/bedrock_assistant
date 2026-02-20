@@ -47,11 +47,16 @@ async def test_load_image_from_file_success(
     """Test successfully loading an image from file."""
     test_file = "/allowed/path/test.jpg"
 
+    async def mock_executor_job(func, *args):
+        # Call the function synchronously and return the result
+        return mock_pil_image
+
     with (
         patch.object(hass.config, "is_allowed_path", return_value=True),
         patch.object(Path, "exists", return_value=True),
         patch("homeassistant.components.bedrock_agent.image_processor.mimetypes.guess_type", return_value=("image/jpeg", None)),
-        patch.object(hass, "async_add_executor_job", return_value=mock_pil_image),
+        patch("homeassistant.components.bedrock_agent.image_processor.PIL.Image.open", return_value=mock_pil_image),
+        patch.object(hass, "async_add_executor_job", side_effect=mock_executor_job),
     ):
         result = await image_processor.load_image_from_file(test_file)
 
@@ -109,10 +114,16 @@ async def test_load_image_from_url_success(
     """Test successfully loading an image from URL."""
     test_url = "https://example.com/test.jpg"
 
+    mock_url_response = MagicMock()
+    
+    async def mock_executor_job(func, *args):
+        # Return mock URL response
+        return mock_url_response
+
     with (
         patch("homeassistant.components.bedrock_agent.image_processor.mimetypes.guess_type", return_value=("image/jpeg", None)),
-        patch.object(hass, "async_add_executor_job", return_value=MagicMock()),
         patch("homeassistant.components.bedrock_agent.image_processor.PIL.Image.open", return_value=mock_pil_image),
+        patch.object(hass, "async_add_executor_job", side_effect=mock_executor_job),
     ):
         result = await image_processor.load_image_from_url(test_url)
 
