@@ -180,63 +180,202 @@ async def test_form_unknown_error(hass: HomeAssistant) -> None:
 
 
 async def test_options_flow(hass: HomeAssistant, mock_config_entry, mock_boto3_client) -> None:
-    """Test options flow."""
+    """Test options flow with menu."""
     mock_config_entry.add_to_hass(hass)
 
+    # Step 1: Init shows menu
     result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
+    assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "init"
+    assert "aws_config" in result["menu_options"]
+    assert "ai_config" in result["menu_options"]
+    assert "memory_config" in result["menu_options"]
+    assert "tools_config" in result["menu_options"]
 
-    # First configure with memory disabled
+
+async def test_options_flow_aws_config(
+    hass: HomeAssistant, mock_config_entry, mock_boto3_client
+) -> None:
+    """Test AWS configuration in options flow."""
+    mock_config_entry.add_to_hass(hass)
+
+    # Navigate to AWS config
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
     result2 = await hass.config_entries.options.async_configure(
         result["flow_id"],
+        user_input={"next_step_id": "aws_config"},
+    )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "aws_config"
+
+    # Configure AWS settings
+    with patch(
+        "homeassistant.components.bedrock_agent.async_setup_entry",
+        return_value=True,
+    ):
+        result3 = await hass.config_entries.options.async_configure(
+            result2["flow_id"],
+            user_input={
+                CONST_REGION: "eu-west-1",
+                CONST_KEY_ID: "new_test_key",
+                CONST_KEY_SECRET: "new_test_secret",
+            },
+        )
+
+    # Should navigate to AI config after reload (to verify/update model)
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "ai_config"
+    
+    # Verify config entry data was updated
+    assert mock_config_entry.data[CONST_KEY_ID] == "new_test_key"
+    assert mock_config_entry.data[CONST_KEY_SECRET] == "new_test_secret"
+    assert mock_config_entry.data[CONST_REGION] == "eu-west-1"
+
+
+async def test_options_flow_ai_config(
+    hass: HomeAssistant, mock_config_entry, mock_boto3_client
+) -> None:
+    """Test AI configuration in options flow."""
+    mock_config_entry.add_to_hass(hass)
+
+    # Navigate to AI config
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "ai_config"},
+    )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "ai_config"
+
+    # Configure AI settings - should return to menu
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"],
         user_input={
             CONST_MODEL_ID: "anthropic.claude-v2",
-            CONST_PROMPT_CONTEXT: "Updated prompt",
-            CONST_ENABLE_HA_CONTROL: False,
-            CONST_ENABLE_MEMORY: False,
-            CONST_MEMORY_STORAGE_PATH: "",
+            CONST_PROMPT_CONTEXT: "Updated system prompt",
         },
     )
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["data"][CONST_MODEL_ID] == "anthropic.claude-v2"
-    assert result2["data"][CONST_PROMPT_CONTEXT] == "Updated prompt"
-    assert result2["data"][CONST_ENABLE_HA_CONTROL] is False
-    assert result2["data"][CONST_ENABLE_MEMORY] is False
+    # Should return to menu, not close
+    assert result3["type"] is FlowResultType.MENU
+    assert result3["step_id"] == "init"
+    
+    # Verify options were saved
+    assert mock_config_entry.options[CONST_MODEL_ID] == "anthropic.claude-v2"
+    assert mock_config_entry.options[CONST_PROMPT_CONTEXT] == "Updated system prompt"
+
+
+async def test_options_flow_memory_config(
+    hass: HomeAssistant, mock_config_entry_with_memory, mock_boto3_client
+) -> None:
+    """Test memory configuration in options flow."""
+    mock_config_entry_with_memory.add_to_hass(hass)
+
+    # Navigate to memory config
+    result = await hass.config_entries.options.async_init(mock_config_entry_with_memory.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "memory_config"},
+    )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "memory_config"
+
+    # Configure memory settings (memory is already enabled, so guidelines field is shown)
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"],
+        user_input={
+            CONST_ENABLE_MEMORY: True,
+            CONST_MEMORY_STORAGE_PATH: "/custom/path",
+            CONST_MEMORY_GUIDELINES: "Custom guidelines",
+        },
+    )
+
+    # Should return to menu, not close
+    assert result3["type"] is FlowResultType.MENU
+    assert result3["step_id"] == "init"
+    
+    # Verify options were saved
+    assert mock_config_entry_with_memory.options[CONST_ENABLE_MEMORY] is True
+    assert mock_config_entry_with_memory.options[CONST_MEMORY_STORAGE_PATH] == "/custom/path"
+    assert mock_config_entry_with_memory.options[CONST_MEMORY_GUIDELINES] == "Custom guidelines"
+
+
+async def test_options_flow_tools_config(
+    hass: HomeAssistant, mock_config_entry, mock_boto3_client
+) -> None:
+    """Test tools configuration in options flow."""
+    mock_config_entry.add_to_hass(hass)
+
+    # Navigate to tools config
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "tools_config"},
+    )
+
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "tools_config"
+
+    # Configure tools settings
+    result3 = await hass.config_entries.options.async_configure(
+        result2["flow_id"],
+        user_input={
+            CONST_ENABLE_HA_CONTROL: False,
+        },
+    )
+
+    # Should return to menu, not close
+    assert result3["type"] is FlowResultType.MENU
+    assert result3["step_id"] == "init"
+    
+    # Verify options were saved
+    assert mock_config_entry.options[CONST_ENABLE_HA_CONTROL] is False
 
 
 async def test_options_flow_memory_disabled(
     hass: HomeAssistant, mock_config_entry, mock_boto3_client
 ) -> None:
-    """Test options flow with memory disabled doesn't show guidelines."""
+    """Test memory config with memory disabled doesn't show guidelines."""
     mock_config_entry.add_to_hass(hass)
 
+    # Navigate to memory config
     result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "memory_config"},
+    )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "memory_config"
 
     # Memory is disabled in mock_config_entry by default
     # Memory guidelines field should not be in the schema
-    schema_keys = [str(key) for key in result["data_schema"].schema.keys()]
+    schema_keys = [str(key) for key in result2["data_schema"].schema.keys()]
     assert CONST_MEMORY_GUIDELINES not in schema_keys
 
 
 async def test_options_flow_memory_enabled_shows_guidelines(
     hass: HomeAssistant, mock_config_entry_with_memory, mock_boto3_client
 ) -> None:
-    """Test options flow with memory enabled shows guidelines field."""
+    """Test memory config with memory enabled shows guidelines field."""
     mock_config_entry_with_memory.add_to_hass(hass)
 
+    # Navigate to memory config
     result = await hass.config_entries.options.async_init(
         mock_config_entry_with_memory.entry_id
     )
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": "memory_config"},
+    )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "memory_config"
 
     # Memory is enabled, guidelines field should be in the schema
-    schema_keys = [str(key) for key in result["data_schema"].schema.keys()]
+    schema_keys = [str(key) for key in result2["data_schema"].schema.keys()]
     assert any(CONST_MEMORY_GUIDELINES in key for key in schema_keys)
