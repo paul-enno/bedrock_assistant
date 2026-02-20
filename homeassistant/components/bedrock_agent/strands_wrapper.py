@@ -334,28 +334,54 @@ IMPORTANT: When using the memory tool, always use user_id="{effective_user_id}" 
         if has_ha_control:
             enhancements.append("""
 
-You have access to Home Assistant smart home control through the homeassistant_control tool.
+You have access to Home Assistant smart home control through a SINGLE TOOL called 'homeassistant_control'.
+
+This tool provides ALL Home Assistant capabilities - you access different functions by setting the 'tool_name' parameter.
 
 CRITICAL RULES FOR USING homeassistant_control:
-1. The tool requires TWO parameters for most operations:
-   - tool_name: The intent name (e.g., "HassTurnOn", "HassGetState")
-   - name: The device name (e.g., "kitchen light", "bedroom fan")
+1. This is ONE TOOL with multiple functions accessed via the 'tool_name' parameter
+2. When asked "what tools do you have", explain that you have ONE unified Home Assistant control tool with many functions
+3. The tool requires TWO parameters for most operations:
+   - tool_name: The function name (e.g., "HassTurnOn", "HassGetState", "todo_get_items")
+   - name: The device/list name (e.g., "kitchen light", "Shopping List")
 
-2. ALWAYS provide the 'name' parameter when using these intents:
+4. ALWAYS provide the 'name' parameter when using these functions:
    - Device control: HassTurnOn, HassTurnOff, HassToggle, HassGetState, HassLightSet, HassSetPosition
    - Media control: HassMediaUnpause, HassMediaPause, HassMediaNext, HassMediaPrevious, HassSetVolume
-   - Shopping lists: HassListAddItem, HassListRemoveItem (name = list name, e.g., "Shopping List")
+   - Shopping lists: HassListAddItem, HassListRemoveItem, todo_get_items (name = list name, e.g., "Shopping List")
 
-3. Only these intents work WITHOUT a 'name' parameter:
+5. QUERYING SHOPPING LISTS - EXTREMELY IMPORTANT:
+   - When the user asks "what's on the shopping list" or similar questions, you MUST call the tool
+   - Use: homeassistant_control(tool_name="todo_get_items", name="Shopping List")
+   - NEVER answer from conversation history or memory
+   - NEVER say "based on what we added earlier" or similar phrases
+   - ALWAYS call todo_get_items to get the current, real-time list contents
+   - Even if you just called it 10 seconds ago, call it again if the user asks again
+   - Lists can change at any time, so you must always check the current state
+   - To add items: homeassistant_control(tool_name="HassListAddItem", name="Shopping List", item="milk")
+   - To remove items: homeassistant_control(tool_name="HassListRemoveItem", name="Shopping List", item="milk")
+
+6. QUERYING CALENDARS - EXTREMELY IMPORTANT:
+   - When the user asks about appointments, meetings, schedule, or "what's on my calendar", you MUST call the tool
+   - Use: homeassistant_control(tool_name="calendar_get_events", calendar="Calendar Name", range="today" or "week")
+   - Use range="today" for today's events, range="week" for the next 7 days
+   - NEVER answer from conversation history or memory
+   - ALWAYS call calendar_get_events to get current, real-time calendar data
+   - Even if you just called it, call it again if the user asks again
+   - Calendars can change at any time, so you must always check the current state
+   - If the user asks "what's happening this week", use range="week"
+   - If the user asks "do I have anything today", use range="today"
+
+7. Only these functions work WITHOUT a 'name' parameter:
    - GetLiveContext (shows all devices)
    - GetDateTime (shows current time)
 
-4. Optional parameters:
+8. Optional parameters:
    - domain: Device type (e.g., "light", "switch", "fan") - helps identify the right device
    - brightness: For lights, 0-100
    - color: For lights, color name or value
 
-5. SPECIAL CASES:
+9. SPECIAL CASES:
    - Scenes: Use the scene name directly as a tool if available, OR use HassTurnOn with the full entity_id (e.g., name="scene.ha_new")
    - Scripts: Use the script name directly as a tool if available
    - If a scene/script tool exists with the exact name, prefer using that tool directly
@@ -364,6 +390,9 @@ CORRECT EXAMPLES:
 ✓ homeassistant_control(tool_name="HassTurnOn", name="kitchen light", domain="light")
 ✓ homeassistant_control(tool_name="HassGetState", name="living room temperature")
 ✓ homeassistant_control(tool_name="HassListAddItem", name="Shopping List", item="milk")
+✓ homeassistant_control(tool_name="todo_get_items", name="Shopping List")
+✓ homeassistant_control(tool_name="calendar_get_events", calendar="My Calendar", range="today")
+✓ homeassistant_control(tool_name="calendar_get_events", calendar="Work Calendar", range="week")
 ✓ homeassistant_control(tool_name="GetLiveContext")
 ✓ homeassistant_control(tool_name="ha_new") - if ha_new is a scene/script tool
 ✓ homeassistant_control(tool_name="HassTurnOn", name="scene.ha_new") - activate scene by entity_id
@@ -371,9 +400,21 @@ CORRECT EXAMPLES:
 WRONG EXAMPLES:
 ✗ homeassistant_control(tool_name="HassTurnOn") - Missing 'name' parameter!
 ✗ homeassistant_control(tool_name="HassTurnOn", domain="light") - Still missing 'name'!
+✗ homeassistant_control(tool_name="calendar_get_events", name="My Calendar") - Wrong parameter! Use 'calendar' not 'name'
 
 If you get an error about "cannot target all devices", it means you forgot to provide the 'name' parameter.
-If you get an error about "Failed to call turn_on", the device might not support that action - try checking available tools with GetLiveContext.""")
+If you get an error about "Failed to call turn_on", the device might not support that action - try checking available tools with GetLiveContext.
+
+WHEN ASKED ABOUT YOUR CAPABILITIES:
+When a user asks "what tools do you have" or "what can you do", explain that you have ONE unified Home Assistant control tool that provides access to all smart home functions including:
+- Device control (lights, switches, locks, etc.)
+- State queries (temperature, status, etc.)
+- Shopping/todo lists
+- Calendar events (if available)
+- Scripts (if available)
+- And more
+
+Do NOT list the internal function names as separate tools - they are all accessed through the single homeassistant_control tool.""")
 
         return base_prompt + "".join(enhancements)
 

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 from strands.tools.decorator import tool
@@ -102,6 +105,12 @@ class HAToolRegistry:
         Returns:
             Tool execution result
         """
+        _LOGGER.debug(
+            "Registry.async_call_tool: tool_name=%s, tool_args=%s",
+            tool_name,
+            tool_args,
+        )
+
         if tool_name not in self.tools_by_name:
             available = ", ".join(sorted(self.tools_by_name.keys()))
             return {
@@ -124,13 +133,60 @@ class HAToolRegistry:
                 tool_args=tool_args,
             )
 
-            # Call the HA tool
-            result = await ha_tool.async_call(hass, tool_input, llm_context)
+            # Call the HA tool - when agent runs in executor (memory enabled),
+            # we're in a different event loop created by strands' asyncio.run().
+            # We must ALWAYS schedule the HA tool call in the HA event loop.
 
+            # Check if we're in the main thread (HA event loop thread)
+            if threading.current_thread() == threading.main_thread():
+                # We're in the HA event loop, call directly
+                result = await ha_tool.async_call(hass, tool_input, llm_context)
+            else:
+                # We're in an executor thread, schedule in HA loop
+                future = asyncio.run_coroutine_threadsafe(
+                    ha_tool.async_call(hass, tool_input, llm_context),
+                    hass.loop
+                )
+                result = await asyncio.wrap_future(future)
+
+            _LOGGER.debug("HA tool %s raw result type: %s", tool_name, type(result).__name__)
             _LOGGER.debug("HA tool %s result: %s", tool_name, result)
 
-            # Return result
+            # Return result - format large responses more concisely
             if isinstance(result, dict):
+                # Handle shopping list/todo responses that might be too large
+                if result.get("success") and "result" in result:
+                    result_data = result["result"]
+                    _LOGGER.debug(
+                        "Processing result for %s: type=%s, length=%s",
+                        tool_name,
+                        type(result_data).__name__,
+                        len(result_data) if isinstance(result_data, list) else "N/A",
+                    )
+                    # If result is a list of items (shopping list), format concisely
+                    if isinstance(result_data, list) and len(result_data) > 0:
+                        # Check if it looks like todo items
+                        first_item = result_data[0]
+                        if isinstance(first_item, dict) and "summary" in first_item:
+                            # Format as a simple string list to minimize size
+                            items = [
+                                item.get("summary", "")
+                                for item in result_data
+                                if isinstance(item, dict) and item.get("summary")
+                            ]
+                            # Return as a simple string to minimize JSON overhead
+                            items_text = "\n".join(f"- {item}" for item in items)
+                            formatted_result = {
+                                "success": True,
+                                "result": f"Shopping list has {len(items)} items:\n{items_text}"
+                            }
+                            _LOGGER.debug("Formatted todo response: %s", formatted_result)
+                            return formatted_result
+
+                        _LOGGER.debug(
+                            "First item doesn't look like todo item: %s",
+                            first_item
+                        )
                 return result
             return {"result": str(result)}
 
@@ -183,21 +239,44 @@ async def create_ha_control_tool(
 
     @tool(
         name="homeassistant_control",
-        description=f"""Control Home Assistant devices and query their state.
+        description=f"""Control Home Assistant devices and query their state. ALWAYS use this tool to get current, real-time information.
 
-This tool dispatches to specific Home Assistant intents. You MUST provide:
-1. tool_name: The intent name (e.g., 'HassTurnOn', 'HassGetState', 'HassListAddItem')
-2. name: The device/list name (REQUIRED for most intents)
-3. Additional parameters based on the intent type
+This is a SINGLE UNIFIED TOOL that provides access to all Home Assistant capabilities.
+You access different functions by setting the 'tool_name' parameter.
 
-Available tools:
+USAGE:
+Call homeassistant_control with:
+1. tool_name: The function to execute (see available functions below)
+2. name: The device/list name (REQUIRED for most functions)
+3. Additional parameters based on the function type
+
+CRITICAL FOR SHOPPING LISTS AND TODO LISTS:
+- To see what's currently on a list, call: homeassistant_control(tool_name='todo_get_items', name='Shopping List')
+- NEVER rely on conversation history or memory for list contents
+- ALWAYS call todo_get_items every single time the user asks about list contents
+- Even if you just called it, call it again if asked again - lists can change
+
+CRITICAL FOR CALENDAR QUERIES:
+- To check calendar events, call: homeassistant_control(tool_name='calendar_get_events', calendar='Calendar Name', range='today' or 'week')
+- Use range='today' for today's events, range='week' for the next 7 days
+- ALWAYS call this tool when asked about appointments, meetings, or schedule
+- NEVER guess or remember calendar events from conversation history
+
+AVAILABLE FUNCTIONS (accessed via tool_name parameter):
 {available_tools}
 
-Examples:
-- Turn on: tool_name='HassTurnOn', name='kitchen light', domain='light'
-- Get state: tool_name='HassGetState', name='bedroom temperature'
-- Add to list: tool_name='HassListAddItem', name='Shopping List', item='milk'
-- List all: tool_name='GetLiveContext'""",
+EXAMPLES:
+- Turn on light: homeassistant_control(tool_name='HassTurnOn', name='kitchen light', domain='light')
+- Get temperature: homeassistant_control(tool_name='HassGetState', name='bedroom temperature')
+- Add to list: homeassistant_control(tool_name='HassListAddItem', name='Shopping List', item='milk')
+- Get shopping list: homeassistant_control(tool_name='todo_get_items', name='Shopping List')
+- Today's calendar: homeassistant_control(tool_name='calendar_get_events', calendar='My Calendar', range='today')
+- Week's calendar: homeassistant_control(tool_name='calendar_get_events', calendar='Work Calendar', range='week')
+- List all devices: homeassistant_control(tool_name='GetLiveContext')
+- Get date/time: homeassistant_control(tool_name='GetDateTime')
+- Run script: homeassistant_control(tool_name='script_name') (if scripts are exposed)
+
+IMPORTANT: All Home Assistant control goes through THIS SINGLE TOOL. Do NOT answer from memory.""",
     )
     async def homeassistant_control(
         tool_name: str,
@@ -206,26 +285,31 @@ Examples:
         brightness: int | None = None,
         color: str = "",
         item: str = "",
+        calendar: str = "",
+        range: str = "",
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Execute a Home Assistant tool.
 
         Args:
-            tool_name: Name of the HA tool/intent (e.g., 'HassTurnOn', 'HassGetState', 'HassListAddItem')
+            tool_name: Name of the HA tool/intent (e.g., 'HassTurnOn', 'HassGetState', 'calendar_get_events')
             name: Device/list name to control (REQUIRED for most intents)
             domain: Device domain (e.g., 'light', 'switch', 'fan')
             brightness: Light brightness 0-100 (for HassLightSet)
             color: Color name or value (for HassLightSet)
             item: Item to add/remove (for HassListAddItem, HassListRemoveItem)
+            calendar: Calendar name (for calendar_get_events)
+            range: Time range 'today' or 'week' (for calendar_get_events)
             **kwargs: Additional parameters for specific intents
         """
-        _LOGGER.info(
-            "Homeassistant_control called: tool_name=%s, name='%s', domain='%s', brightness=%s, color='%s', kwargs=%s",
+        _LOGGER.debug(
+            "Homeassistant_control called: tool_name=%s, name='%s', domain='%s', brightness=%s, color='%s', item='%s', kwargs=%s",
             tool_name,
             name,
             domain,
             brightness,
             color,
+            item,
             kwargs,
         )
 
@@ -246,6 +330,7 @@ Examples:
             # Shopping list / todo intents
             "HassListAddItem",
             "HassListRemoveItem",
+            "todo_get_items",
         }
 
         if tool_name in intents_requiring_name and not name:
@@ -260,10 +345,23 @@ Examples:
             _LOGGER.error(error_msg)
             return {"error": error_msg}
 
-        # Build tool args
-        tool_args = {**kwargs}
-        if name:
+        # Build tool args - only include non-empty values
+        tool_args: dict[str, Any] = {}
+
+        # Map parameters based on tool type
+        # todo_get_items expects 'todo_list' instead of 'name'
+        if tool_name == "todo_get_items":
+            if name:
+                tool_args["todo_list"] = name
+        # calendar_get_events uses 'calendar' and 'range' parameters
+        elif tool_name == "calendar_get_events":
+            if calendar:
+                tool_args["calendar"] = calendar
+            if range:
+                tool_args["range"] = range
+        elif name:
             tool_args["name"] = name
+
         if domain:
             tool_args["domain"] = domain
         if brightness is not None:
@@ -273,14 +371,49 @@ Examples:
         if item:
             tool_args["item"] = item
 
-        _LOGGER.info("Calling HA tool %s with args: %s", tool_name, tool_args)
+        # Add any additional kwargs, but filter out:
+        # - Empty/None values
+        # - The 'kwargs' key itself (LLM sometimes sends this)
+        tool_args.update({
+            key: value
+            for key, value in kwargs.items()
+            if key != "kwargs" and value is not None and value not in {"", "{}"}
+        })
 
-        return await registry.async_call_tool(
+        _LOGGER.debug("Calling HA tool %s with args: %s", tool_name, tool_args)
+
+        result = await registry.async_call_tool(
             hass,
             tool_name,
             tool_args,
             llm_context,
         )
+
+        # Ensure result is not too large for Strands SDK
+        # Convert to string and check size
+        result_str = json.dumps(result)
+        result_size = len(result_str)
+        _LOGGER.debug("Tool %s result size: %d bytes", tool_name, result_size)
+
+        # If result is too large (>4KB), try to summarize it
+        if result_size > 4096:
+            _LOGGER.warning("Tool %s result too large (%d bytes), summarizing", tool_name, result_size)
+            if isinstance(result, dict) and result.get("success") and "result" in result:
+                result_data = result["result"]
+                if isinstance(result_data, list):
+                    # Summarize list results
+                    return {
+                        "success": True,
+                        "result": f"Found {len(result_data)} items. Use a more specific query to see details."
+                    }
+                if isinstance(result_data, str) and len(result_data) > 1000:
+                    # Truncate long strings
+                    return {
+                        "success": True,
+                        "result": result_data[:1000] + f"... (truncated, {len(result_data)} total chars)"
+                    }
+
+        return result
 
     return homeassistant_control
 
