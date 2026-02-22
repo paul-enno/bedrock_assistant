@@ -63,11 +63,28 @@ The Amazon Bedrock Agent integration brings powerful AI conversation capabilitie
 
 ### Dependencies
 The integration automatically installs:
-- `boto3==1.39.9` - AWS SDK
-- `botocore==1.39.9` - AWS SDK core
+- `boto3==1.42.8` - AWS SDK
+- `botocore==1.42.8` - AWS SDK core
 - `strands-agents==1.26.0` - Agent framework
-- `strands-agents-tools[mem0_memory]==0.1.19` - Memory tools
-- `faiss-cpu==1.9.0` - Vector database for semantic memory
+- `strands-agents-tools==0.2.20` - Agent tools
+- `faiss-cpu==1.13.2` - Vector database for semantic memory
+
+### Known Dependency Conflicts
+
+If you're using the `apple_tv` or `esphome` integrations alongside this component, you may encounter a protobuf version conflict. The `mem0_memory` feature requires `protobuf<6.0.0`, while these integrations require `protobuf>=6.0.0`.
+
+**Workaround:**
+1. Install strands dependencies first:
+   ```bash
+   pip install strands-agents-tools
+   pip install strands-agents-tools[mem0_memory]
+   ```
+2. Then upgrade aioesphomeapi to resolve the conflict:
+   ```bash
+   pip install aioesphomeapi==44.0.0
+   ```
+
+This ensures all components can coexist with compatible protobuf versions.
 
 ## Configuration
 
