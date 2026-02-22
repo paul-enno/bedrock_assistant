@@ -1,0 +1,18 @@
+{
+  "domain": "bedrock_agent",
+  "name": "Amazon Bedrock Agent",
+  "after_dependencies": ["assist_pipeline"],
+  "codeowners": ["@paul-enno"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "documentation": "https://www.home-assistant.io/integrations/bedrock_agent",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "requirements": [
+    "boto3==1.42.8", 
+    "botocore==1.42.8",
+    "strands-agents==1.26.0",
+    "strands-agents-tools==0.2.20",
+    "strands-agents-tools[mem0_memory]==0.2.20",
+    "faiss-cpu==1.13.2"]
+}

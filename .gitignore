@@ -144,3 +144,9 @@ pytest_buckets.txt
 .claude/settings.local.json
 .serena/
 
+# Self defined
+dev-docs/
+
+
+
+
